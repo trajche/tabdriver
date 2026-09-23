@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Driver",
+  "version": "0.2.0",
+  "description": "Let AI agents (Claude, Codex, Cursor, ...) control tabs in your real browser session, with you watching.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjQWcQe+JpxVjsp66rWj9VLsVvvLByXgquIuYChTLiIAw0KB9Ehj7qhw9hAc0/4DCHiZ6TlHcQ55guFKf/4wLHR/H6Y8QleQIVhZ3BYBfxvguXwERN/s72fa1D/5TuiCMK/xFfu0ChDY5zc/lqlHFqWX9/RPtI3EH5htJtEW6gDtMdt30SWzdaG+SR36Spy4zyxqTnnKqI6b5qVZ3PErcZLOqKq5ZM+KVEt1QLlZSH9jfAndx1jK6xZEKfGbUdqaHDVB8yM7JEBvQ8tRxDJEK0mA2E9B/t5PzCKfuvvbDDcVWvvzyTd62ovUN8OHy7lCRUe/5BRzqvu3bMY8XCAoxvQIDAQAB",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage",
+    "alarms",
+    "downloads",
+    "debugger",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Tab Driver",
+    "default_popup": "popup.html"
+  },
+  "minimum_chrome_version": "116"
+}

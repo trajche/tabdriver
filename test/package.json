@@ -1,0 +1,12 @@
+{
+  "name": "tabdriver-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node e2e.mjs"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "playwright": "^1.55.0"
+  }
+}

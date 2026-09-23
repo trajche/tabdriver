@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 320px; margin: 0; padding: 14px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: #222; }
+  h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  h1 .spacer { flex: 1; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #9e9e9e; }
+  .dot.connected { background: #2e7d32; } .dot.error { background: #c62828; }
+  .detail { color: #666; font-size: 12px; margin: -4px 0 10px; }
+  .detail code { background: #f3f3f3; padding: 1px 4px; border-radius: 4px; }
+  label.section { display: block; font-size: 12px; color: #555; margin: 12px 0 3px; }
+  button { padding: 7px; border: 0; border-radius: 6px; background: #eee; cursor: pointer; }
+  button.primary { background: #d97757; color: #fff; width: 100%; }
+  ul { list-style: none; padding: 0; margin: 4px 0 0; }
+  li { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
+  li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li button { padding: 2px 8px; }
+  .muted { color: #888; }
+  .switch { font-size: 12px; font-weight: normal; display: flex; gap: 4px; align-items: center; }
+</style>
+</head>
+<body>
+  <h1><span id="dot" class="dot"></span>Tab Driver <span id="status" class="muted"></span><span class="spacer"></span>
+    <label class="switch"><input id="enabled" type="checkbox"> On</label></h1>
+  <div id="detail" class="detail"></div>
+
+  <button id="control" class="primary">Let AI agents control this tab</button>
+
+  <label class="section">Connected agents</label>
+  <ul id="agents"></ul>
+
+  <label class="section">Controlled tabs</label>
+  <ul id="tabs"></ul>
+  <script src="popup.js"></script>
+</body>
+</html>

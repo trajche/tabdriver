@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tabdriver": {
+      "command": "tabdriver",
+      "args": ["mcp"]
+    }
+  }
+}
