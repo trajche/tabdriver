@@ -225,21 +225,107 @@
           transition: opacity .6s; pointer-events: none; }
         .hl span { position: absolute; top: -20px; left: -2px; background: #d97757; color: #fff; font-size: 11px;
           padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+        .pointer { position: fixed; left: 0; top: 0; will-change: transform; transition: opacity .4s;
+          filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+        .pointer.idle { opacity: .55; }
+        .pointer svg { display: block; width: 24px; height: 24px; transform-origin: 4px 2px; transition: transform .08s; }
+        .pointer.press svg { transform: scale(.82); }
+        .pointer .tag { position: absolute; left: 18px; top: 22px; background: #d97757; color: #fff; font-size: 11px;
+          font-weight: 600; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+        .pointer .ring { position: absolute; left: -10px; top: -12px; width: 28px; height: 28px; border-radius: 50%;
+          border: 2px solid #d97757; opacity: 0; }
+        .pointer.press .ring { animation: ring .3s ease-out; }
+        @keyframes ring { from { transform: scale(.3); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
       </style>
+      <div class="pointer" hidden><div class="ring"></div>
+        <svg viewBox="0 0 24 24"><path d="M4 2v17l4.5-4.5 3 6.5 2.6-1.1-3-6.4H17.5z" fill="#d97757" stroke="#fff"
+          stroke-width="1.6" stroke-linejoin="round"/></svg><span class="tag"></span></div>
       <div class="pill" hidden><span class="dot"></span><span class="label"></span><button class="stop">Stop</button></div>
       <div class="card" hidden><div class="title"></div><div class="msg"></div><div class="actions"></div></div>`;
     (document.body || document.documentElement).appendChild(host);
     const pill = root.querySelector('.pill');
     pill.querySelector('.stop').addEventListener('click', () => api.runtime.sendMessage({ type: 'release-tab' }));
-    ui = { host, root, pill, card: root.querySelector('.card') };
+    ui = { host, root, pill, card: root.querySelector('.card'), pointer: root.querySelector('.pointer') };
     return ui;
   }
 
-  function setControlled({ on, agent }) {
-    const { pill } = getUi();
+  // `pointer`: { enabled, x, y } from the background; x/y is where the pointer was on the previous page.
+  function setControlled({ on, agent, pointer: cfg }) {
+    const { pill, pointer: el } = getUi();
     pill.hidden = !on;
     pill.querySelector('.label').textContent = agent ? `${agent} is controlling this tab` : 'AI agents may control this tab';
+    pointer.enabled = on && cfg?.enabled !== false;
+    el.querySelector('.tag').textContent = agent || 'AI';
+    if (!pointer.enabled) el.hidden = true;
+    else if (pointer.x == null && Number.isFinite(cfg?.x)) {
+      placePointer(cfg.x, cfg.y);
+      el.hidden = false;
+      el.classList.add('idle');
+    }
     return true;
+  }
+
+  // ---------- agent pointer ----------
+  // A pointer glides to each element the agent acts on, so the user can follow along. The path
+  // bends slightly and the speed follows a minimum-jerk profile (quick start, soft landing), the
+  // way a hand moves a mouse. Hidden tabs don't run animation frames, so there it just jumps.
+  const pointer = { enabled: false, x: null, y: null, idleTimer: 0 };
+
+  function placePointer(x, y) {
+    getUi().pointer.style.transform = `translate(${x - 4}px, ${y - 2}px)`; // the arrow's tip is at (4, 2)
+    pointer.x = x;
+    pointer.y = y;
+  }
+
+  async function movePointer(x, y) {
+    if (!pointer.enabled) return;
+    const el = getUi().pointer;
+    el.hidden = false;
+    el.classList.remove('idle');
+    clearTimeout(pointer.idleTimer);
+    if (pointer.x == null) placePointer(innerWidth * 0.62, innerHeight * 0.72);
+    const x0 = pointer.x, y0 = pointer.y, dx = x - x0, dy = y - y0;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 3 || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      placePointer(x, y);
+    } else {
+      const ms = Math.min(750, 220 + dist * 0.45);
+      const bend = (Math.random() - 0.5) * 0.4 * dist; // sideways arc, like a wrist
+      const cx = (x0 + x) / 2 - (dy / dist) * bend, cy = (y0 + y) / 2 + (dx / dist) * bend;
+      await new Promise((done) => {
+        const t0 = performance.now();
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(safety);
+          placePointer(x, y);
+          done();
+        };
+        const safety = setTimeout(finish, ms + 250); // in case frames stop (tab hidden mid-move)
+        const frame = (now) => {
+          const t = Math.min(1, (now - t0) / ms);
+          if (t >= 1 || finished) return finish();
+          const e = t * t * t * (10 - 15 * t + 6 * t * t);
+          const u = 1 - e;
+          placePointer(u * u * x0 + 2 * u * e * cx + e * e * x, u * u * y0 + 2 * u * e * cy + e * e * y);
+          requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      });
+    }
+    pointer.idleTimer = setTimeout(() => el.classList.add('idle'), 3000);
+    api.runtime.sendMessage({ type: 'pointer-at', x, y }).catch(() => {});
+  }
+
+  async function pressPointer() {
+    if (!pointer.enabled) return;
+    const el = getUi().pointer;
+    el.classList.remove('press');
+    void el.offsetWidth; // restart the ripple
+    el.classList.add('press');
+    setTimeout(() => el.classList.remove('press'), 300);
+    await sleep(90);
   }
 
   function highlight(el, label) {
@@ -299,16 +385,20 @@
     return { x, y };
   }
 
-  async function prepare(el, label) {
+  // Bring `el` into view, move the agent pointer onto it, and flag it. `press` shows a click.
+  async function prepare(el, label, press = false) {
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
     await sleep(50);
+    const { x, y } = centerOf(el);
+    await movePointer(x, y);
     highlight(el, label);
-    await sleep(150);
+    if (press) await pressPointer();
+    await sleep(pointer.enabled ? 60 : 150);
   }
 
   async function click({ ref }) {
     const el = resolve(ref);
-    await prepare(el, 'click');
+    await prepare(el, 'click', true);
     const { x, y } = centerOf(el);
     const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window };
     el.dispatchEvent(new PointerEvent('pointerover', opts));
@@ -323,7 +413,7 @@
 
   async function pointFor({ ref }) {
     const el = resolve(ref);
-    await prepare(el, 'click');
+    await prepare(el, 'click', true);
     return centerOf(el);
   }
 
@@ -335,7 +425,7 @@
 
   async function type({ ref, text, clear = true, submit = false }) {
     const el = resolve(ref);
-    await prepare(el, 'type');
+    await prepare(el, 'type', true);
     el.focus();
     const isField = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
     if (clear) {
@@ -355,7 +445,7 @@
   async function selectOption({ ref, value }) {
     const el = resolve(ref);
     if (el.tagName !== 'SELECT') throw new Error(`${ref} is not a <select>; click it and pick an option instead.`);
-    await prepare(el, 'select');
+    await prepare(el, 'select', true);
     const want = value.toLowerCase().trim();
     const opt = [...el.options].find((o) => o.value === value)
       || [...el.options].find((o) => o.text.toLowerCase().trim() === want)

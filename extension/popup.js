@@ -29,6 +29,7 @@ async function render() {
   $('dot').className = `dot ${state.status}`;
   $('status').textContent = state.status === 'connected' ? 'ready' : missing ? 'app not found' : state.status;
   $('enabled').checked = state.enabled;
+  $('pointer').checked = state.pointer;
   $('detail').textContent = state.status === 'connected' || missing ? '' : state.statusDetail;
 
   $('setup').hidden = !missing;
@@ -68,6 +69,8 @@ $('guide').onclick = () => {
   api.tabs.create({ url: api.runtime.getURL('setup.html') });
   window.close();
 };
+
+$('pointer').onchange = (e) => send({ type: 'set-pointer', enabled: e.target.checked });
 
 $('enabled').onchange = async (e) => {
   await send({ type: 'set-enabled', enabled: e.target.checked });

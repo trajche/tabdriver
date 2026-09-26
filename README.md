@@ -64,6 +64,8 @@ Run `tabdriver` without arguments to print the config for other agents.
 
 - Agents act only on tabs they opened or that you allowed (popup, or *Allow* in the page).
 - Controlled tabs show "*Agent* is controlling this tab" with a **Stop** button.
+  The agent's pointer glides to everything it clicks or types into, so you can follow along
+  (switch it off in the popup).
 - `wait_for_user` hands the tab to you and waits for *Done*. Raise your agent's tool timeout for it
   (Claude Code `MCP_TOOL_TIMEOUT`, Codex `tool_timeout_sec`).
 - Several agents can work at once, each in its own tabs.

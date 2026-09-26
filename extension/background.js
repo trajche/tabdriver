@@ -5,7 +5,7 @@
 
 const api = globalThis.browser ?? globalThis.chrome;
 const HOST_NAME = 'com.tabdriver.host';
-const DEFAULTS = { enabled: true };
+const DEFAULTS = { enabled: true, pointer: true }; // pointer: show the agent's pointer in pages
 
 // ---------- state ----------
 let port = null;
@@ -22,6 +22,8 @@ let lastTabId = null;
 const prompts = new Map(); // promptId -> { tabId, kind, title, message, resolve, timer }
 let promptSeq = 0;
 const chunks = new Map(); // cid -> { parts, total } for messages split by the host
+const pointerAt = new Map(); // tabId -> { x, y }: where the agent pointer last was, so it survives navigation
+let pointerEnabled = DEFAULTS.pointer;
 
 const ready = (async () => {
   const s = await api.storage.session.get(['controlled', 'lastTabId']).catch(() => ({}));
@@ -30,6 +32,11 @@ const ready = (async () => {
   lastTabId = open.has(s.lastTabId) ? s.lastTabId : null;
 })();
 ready.then(() => updateSidebarBadges());
+
+// What a controlled tab shows: the "Agent is controlling this tab" pill and the agent pointer.
+function controlParams(tabId) {
+  return { on: true, agent: tabAgent.get(tabId), pointer: { enabled: pointerEnabled, ...pointerAt.get(tabId) } };
+}
 
 function persist() {
   api.storage.session.set({ controlled: [...controlled], lastTabId }).catch(() => {});
@@ -234,7 +241,11 @@ api.alarms.onAlarm.addListener(async (a) => {
   updateSidebarBadges();
   if ((await getSettings()).enabled && !port) connect();
 });
-getSettings().then((s) => (s.enabled ? connect() : setStatus('disabled')));
+getSettings().then((s) => {
+  pointerEnabled = s.pointer;
+  if (s.enabled) connect();
+  else setStatus('disabled');
+});
 
 // ---------- tab helpers ----------
 async function activeTab() {
@@ -266,7 +277,7 @@ function useTab(tabId, agent) {
     agentTab.set(agent, tabId);
     if (tabAgent.get(tabId) !== agent) {
       tabAgent.set(tabId, agent);
-      page(tabId, 'setControlled', { on: true, agent }).catch(() => {});
+      page(tabId, 'setControlled', controlParams(tabId)).catch(() => {});
     }
   }
   persist();
@@ -324,6 +335,12 @@ async function ensureAgent(tabId) {
   }).catch((e) => { throw new Error(`Cannot access tab ${tabId}: ${e.message}`); });
   if (!probe?.result) {
     await api.scripting.executeScript({ target: { tabId }, files: ['page-agent.js'] });
+    // A new page: show the pill and pointer before the agent's first action on it.
+    if (controlled.has(tabId)) {
+      await api.scripting.executeScript({
+        target: { tabId }, func: (p) => window.__tabdriver.run('setControlled', p), args: [controlParams(tabId)],
+      }).catch(() => {});
+    }
   }
 }
 
@@ -345,7 +362,7 @@ async function markControlled(tabId, agent) {
   if (agent) { tabAgent.set(tabId, agent); agentTab.set(agent, tabId); noteActivity(tabId); }
   lastTabId = tabId;
   persist();
-  await page(tabId, 'setControlled', { on: true, agent: tabAgent.get(tabId) }).catch(() => {});
+  await page(tabId, 'setControlled', controlParams(tabId)).catch(() => {});
 }
 
 async function release(tabId) {
@@ -358,7 +375,7 @@ async function release(tabId) {
 api.tabs.onUpdated.addListener(async (tabId, info) => {
   if (info.status !== 'complete') return;
   await ready;
-  if (controlled.has(tabId)) await page(tabId, 'setControlled', { on: true, agent: tabAgent.get(tabId) }).catch(() => {});
+  if (controlled.has(tabId)) await page(tabId, 'setControlled', controlParams(tabId)).catch(() => {});
   for (const [id, p] of prompts) {
     if (p.tabId === tabId) page(tabId, 'showPrompt', { id, kind: p.kind, title: p.title, message: p.message }).catch(() => {});
   }
@@ -368,6 +385,7 @@ function forgetTab(tabId) {
   controlled.delete(tabId);
   tabAgent.delete(tabId);
   lastActive.delete(tabId);
+  pointerAt.delete(tabId);
   for (const [agent, id] of agentTab) if (id === tabId) agentTab.delete(agent);
   if (lastTabId === tabId) lastTabId = null;
   persist();
@@ -411,6 +429,14 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'prompt-answer':
         finishPrompt(msg.id, msg.answer);
         return true;
+      case 'pointer-at':
+        if (tabId != null && Number.isFinite(msg.x) && Number.isFinite(msg.y)) pointerAt.set(tabId, { x: msg.x, y: msg.y });
+        return true;
+      case 'set-pointer':
+        pointerEnabled = !!msg.enabled;
+        await api.storage.local.set({ pointer: pointerEnabled });
+        for (const id of controlled) page(id, 'setControlled', controlParams(id)).catch(() => {});
+        return true;
       case 'release-tab':
         if (tabId != null) await release(tabId);
         return true;
@@ -419,7 +445,7 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const s = await getSettings();
         const tabs = await api.tabs.query({});
         return {
-          status, statusDetail, agents, enabled: s.enabled, hostVersion,
+          status, statusDetail, agents, enabled: s.enabled, pointer: s.pointer, hostVersion,
           extensionVersion: api.runtime.getManifest().version,
           os: (await api.runtime.getPlatformInfo()).os,
           controlled: tabs.filter((t) => controlled.has(t.id)).map((t) => ({ ...tabSummary(t), agent: tabAgent.get(t.id) })),
