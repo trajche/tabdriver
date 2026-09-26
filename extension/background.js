@@ -38,15 +38,29 @@ function persist() {
 }
 
 // ---------- sidebar tab badges ----------
-// Sidebar extensions that take tab badges get an "AI" badge on every controlled tab, so the
-// user sees in their tab list which tabs agents drive. Arcsidebar (Firefox) is the one so far.
+// Sidebar extensions that take tab badges get a robot icon on every controlled tab, so the
+// user sees in their tab list which tabs agents drive. It blinks while the agent is working
+// in the tab. Arcsidebar (Firefox) is the one so far; versions without icons show "AI".
 const BADGE_HOSTS = browserName() === 'firefox' ? ['arc@sidebar'] : [];
 const badgesSent = new Map(); // host -> JSON of the badges it last accepted
+const ACTIVE_MS = 5000; // an agent counts as working in a tab this long after its last action
+const lastActive = new Map(); // tabId -> when an agent last acted in it
+let activeTimer = null;
+
+function noteActivity(tabId) {
+  lastActive.set(tabId, Date.now());
+  clearTimeout(activeTimer);
+  activeTimer = setTimeout(updateSidebarBadges, ACTIVE_MS + 100); // stop the blinking
+}
 
 function controlledBadges() {
+  const now = Date.now();
   return [...controlled].map((tabId) => ({
     tabId,
     label: 'AI',
+    icon: 'bot',
+    position: 'start',
+    pulse: now - (lastActive.get(tabId) || 0) < ACTIVE_MS,
     title: `${tabAgent.get(tabId) || 'An AI agent'} is controlling this tab`,
   }));
 }
@@ -224,6 +238,7 @@ function requireControlled(params) {
 // Remember which tab an agent last used, and label the in-page banner with its name.
 function useTab(tabId, agent) {
   lastTabId = tabId;
+  noteActivity(tabId);
   if (agent) {
     agentTab.set(agent, tabId);
     if (tabAgent.get(tabId) !== agent) {
@@ -304,7 +319,7 @@ async function page(tabId, method, params) {
 
 async function markControlled(tabId, agent) {
   controlled.add(tabId);
-  if (agent) { tabAgent.set(tabId, agent); agentTab.set(agent, tabId); }
+  if (agent) { tabAgent.set(tabId, agent); agentTab.set(agent, tabId); noteActivity(tabId); }
   lastTabId = tabId;
   persist();
   await page(tabId, 'setControlled', { on: true, agent: tabAgent.get(tabId) }).catch(() => {});
@@ -329,6 +344,7 @@ api.tabs.onUpdated.addListener(async (tabId, info) => {
 function forgetTab(tabId) {
   controlled.delete(tabId);
   tabAgent.delete(tabId);
+  lastActive.delete(tabId);
   for (const [agent, id] of agentTab) if (id === tabId) agentTab.delete(agent);
   if (lastTabId === tabId) lastTabId = null;
   persist();
