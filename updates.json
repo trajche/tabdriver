@@ -1,7 +1,13 @@
 {
   "addons": {
     "tabdriver@firefox": {
-      "updates": []
+      "updates": [
+        {
+          "version": "0.2.1",
+          "update_link": "https://github.com/trajche/tabdriver/releases/download/v0.2.1/tabdriver-firefox.xpi",
+          "update_hash": "sha256:3df6fda1f7422cb09c45ee8ab3bd450c7dcdc4cf0357885f7c98b5ed6b85d7ba"
+        }
+      ]
     }
   }
 }
