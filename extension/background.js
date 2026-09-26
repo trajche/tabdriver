@@ -14,6 +14,10 @@ let port = null;
 let status = 'disconnected';
 let statusDetail = '';
 let hostVersion = null; // version the app reported
+let hostProtocol = 0; // protocol the app speaks (apps before 0.2.5 don't say: 1)
+// Lowest app protocol this extension works with. Raise it together with common.Protocol when the
+// extension starts relying on something new in the app; only then are users asked to update.
+const MIN_APP_PROTOCOL = 1;
 let agents = []; // names of agents currently connected through the host
 const controlled = new Set(); // tab ids agents may act on
 const tabAgent = new Map(); // tabId -> name of the agent that last acted on it
@@ -215,6 +219,7 @@ async function onHostMessage(p, msg) {
   }
   if (msg.type === 'host') {
     hostVersion = msg.version || null;
+    hostProtocol = msg.protocol || 1;
     notifyPopup();
     return;
   }
@@ -448,6 +453,7 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const tabs = await api.tabs.query({});
         return {
           status, statusDetail, agents, enabled: s.enabled, pointer: s.pointer, hostVersion,
+          appOutdated: status === 'connected' && hostProtocol > 0 && hostProtocol < MIN_APP_PROTOCOL,
           extensionVersion: api.runtime.getManifest().version,
           os: (await api.runtime.getPlatformInfo()).os,
           controlled: tabs.filter((t) => controlled.has(t.id)).map((t) => ({ ...tabSummary(t), agent: tabAgent.get(t.id) })),

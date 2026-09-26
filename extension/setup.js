@@ -21,7 +21,7 @@ async function render() {
   $('install').hidden = connected;
   if (!$('commands').childElementCount) renderInstallCommands($('commands'), state.os);
   $('installed').hidden = !connected;
-  $('installed').textContent = isOlderVersion(state.hostVersion, state.extensionVersion)
+  $('installed').textContent = state.appOutdated
     ? `Connected, but the app (${state.hostVersion}) is older than the extension (${state.extensionVersion}). Update it: ${updateHint(state.os)}.`
     : `Connected${state.hostVersion ? ` to tabdriver ${state.hostVersion}` : ''}. You're set.`;
 }

@@ -35,7 +35,7 @@ async function render() {
   $('setup').hidden = !missing;
   $('main').hidden = missing;
   if (missing && !$('commands').childElementCount) renderInstallCommands($('commands'), state.os);
-  const outdated = state.status === 'connected' && isOlderVersion(state.hostVersion, state.extensionVersion);
+  const outdated = state.appOutdated;
   $('update').hidden = !outdated;
   if (outdated) {
     $('update').textContent = `The tabdriver app (${state.hostVersion}) is older than this extension ` +

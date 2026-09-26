@@ -17,6 +17,10 @@ const (
 // Version is set at build time with -ldflags "-X .../common.Version=v1.2.3".
 var Version = "dev"
 
+// Protocol is the version of the host <-> extension messages. Bump it only when the extension
+// needs something older apps don't do; the extension asks users to update below its minimum.
+const Protocol = 1
+
 // BaseDir is ~/.tabdriver (overridable with TABDRIVER_HOME, used by tests).
 func BaseDir() string {
 	if d := os.Getenv("TABDRIVER_HOME"); d != "" {

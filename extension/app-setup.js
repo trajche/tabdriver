@@ -24,15 +24,6 @@ const APP_UPDATE = {
 const installCommands = (os) => APP_INSTALL[os] || APP_INSTALL.linux;
 const updateHint = (os) => APP_UPDATE[os] || APP_UPDATE.linux;
 
-/** True when version `a` is older than `b`. Only plain x.y.z versions compare; dev builds never do. */
-function isOlderVersion(a, b) {
-  const parse = (v) => (/^v?(\d+)\.(\d+)\.(\d+)$/.exec(v || '') || []).slice(1).map(Number);
-  const x = parse(a), y = parse(b);
-  if (x.length !== 3 || y.length !== 3) return false;
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
-  return false;
-}
-
 /** Fill `el` with the install commands for `os`, each with a Copy button. */
 const renderInstallCommands = (el, os) => renderCommands(el, installCommands(os));
 
