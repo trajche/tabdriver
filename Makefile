@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/trajche/tabdriver/internal/common.Version=$(VERSION)
 PREFIX  ?= $(HOME)/.local
 
-.PHONY: build install uninstall snapshot chrome firefox amo test test-firefox vet clean
+.PHONY: build install uninstall snapshot chrome firefox firefox-sign test test-firefox vet clean
 
 build: ## Build for this machine into bin/
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/tabdriver ./cmd/tabdriver
@@ -36,9 +36,11 @@ chrome: ## Chrome extension: build/chrome/ and build/tabdriver-chrome.zip
 firefox: ## Firefox add-on: build/firefox/ (load via about:debugging) and build/tabdriver-firefox.zip
 	$(call package_ext,firefox,manifest.firefox.json)
 
-amo: firefox ## Submit build/firefox to addons.mozilla.org as a listed version (needs WEB_EXT_API_KEY and WEB_EXT_API_SECRET)
-	npx --yes web-ext@8 sign --channel listed --source-dir build/firefox --artifacts-dir build \
-		--amo-metadata amo/metadata.json --approval-timeout 0
+firefox-sign: firefox ## Sign build/firefox with AMO as unlisted (private) -> build/tabdriver-firefox.xpi. Needs WEB_EXT_API_KEY, WEB_EXT_API_SECRET
+	@rm -f build/*.xpi
+	npx --yes web-ext@8 sign --channel unlisted --source-dir build/firefox --artifacts-dir build
+	mv "$$(ls -t build/*.xpi | head -1)" build/tabdriver-firefox.xpi
+	@echo "build/tabdriver-firefox.xpi"
 
 vet:
 	go vet ./...

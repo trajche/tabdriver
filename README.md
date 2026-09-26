@@ -43,7 +43,7 @@ then run `tabdriver install`.
 
 **2. Extension**
 
-- Firefox: [Tab Driver on addons.mozilla.org](https://addons.mozilla.org/firefox/addon/tab-driver/)
+- Firefox: open [tabdriver-firefox.xpi](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver-firefox.xpi) in Firefox (signed by Mozilla, updates itself)
 - Chrome, Arc, Brave, Edge: unzip [tabdriver-chrome.zip](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver-chrome.zip),
   then `chrome://extensions` → *Developer mode* → *Load unpacked*
 
@@ -90,12 +90,13 @@ Run `tabdriver` without arguments to print the config for other agents.
 make install        # build from source (Go) into ~/.local/bin and register it
 make test           # vet + end-to-end test in Chromium (needs Node)
 make test-firefox   # same in a throwaway Firefox profile
-make firefox chrome # extension packages in build/
+make firefox chrome # extension packages in build/ (make firefox-sign: signed .xpi)
 make snapshot       # local release build with GoReleaser, publishes nothing
 ```
 
 Release: push a tag like `v0.3.0`. The workflow builds all binaries, publishes the GitHub release,
-updates the Homebrew cask and Scoop manifest, and submits the add-on to addons.mozilla.org.
+updates the Homebrew cask and Scoop manifest, and signs the Firefox add-on with Mozilla (unlisted,
+so it isn't in the AMO catalogue) for `updates.json`.
 
 Logs: `~/.tabdriver/host.log` (host), stderr (MCP server).
 

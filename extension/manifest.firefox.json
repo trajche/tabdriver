@@ -37,6 +37,7 @@
     "gecko": {
       "id": "tabdriver@firefox",
       "strict_min_version": "128.0",
+      "update_url": "https://raw.githubusercontent.com/trajche/tabdriver/main/updates.json",
       "data_collection_permissions": { "required": ["none"] }
     }
   }

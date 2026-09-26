@@ -26,17 +26,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Submits the add-on to addons.mozilla.org (creates the listing the first time). Mozilla
-  # reviews it, then Firefox users get it from AMO. amo/metadata.json holds the listing text.
-  amo:
+  # Signs the Firefox add-on with addons.mozilla.org as unlisted: private, not in the AMO catalogue.
+  # The signed .xpi goes on the GitHub release, and updates.json (the manifest's update_url)
+  # points installed copies at it, so they update themselves.
+  firefox:
     needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: make amo EXT_VERSION="${GITHUB_REF_NAME#v}"
+      - run: make firefox-sign EXT_VERSION="${GITHUB_REF_NAME#v}"
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+      - run: gh release upload "$GITHUB_REF_NAME" build/tabdriver-firefox.xpi --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Point updates.json at the new version
+        run: |
+          git checkout main && git pull -q
+          node -e '
+            const fs = require("fs"), crypto = require("crypto");
+            const [tag] = process.argv.slice(1), version = tag.slice(1);
+            const hash = "sha256:" + crypto.createHash("sha256").update(fs.readFileSync("build/tabdriver-firefox.xpi")).digest("hex");
+            const link = `https://github.com/trajche/tabdriver/releases/download/${tag}/tabdriver-firefox.xpi`;
+            const data = JSON.parse(fs.readFileSync("updates.json", "utf8"));
+            const list = data.addons["tabdriver@firefox"].updates.filter((u) => u.version !== version);
+            list.push({ version, update_link: link, update_hash: hash });
+            list.sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
+            data.addons["tabdriver@firefox"].updates = list;
+            fs.writeFileSync("updates.json", JSON.stringify(data, null, 2) + "\n");
+          ' "$GITHUB_REF_NAME"
+          git config user.name tabdriver-release
+          git config user.email tabdriver-release@users.noreply.github.com
+          git commit -qam "Release $GITHUB_REF_NAME: Firefox updates.json"
+          git push -q

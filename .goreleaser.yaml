@@ -38,7 +38,7 @@ release:
     **macOS / Linux**: `curl -fsSL https://raw.githubusercontent.com/trajche/tabdriver/main/install.sh | sh`
     **Windows**: `irm https://raw.githubusercontent.com/trajche/tabdriver/main/install.ps1 | iex`, or `scoop bucket add tabdriver https://github.com/trajche/tabdriver; scoop install tabdriver`
 
-    **Firefox add-on**: [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/tab-driver/)
+    **Firefox**: download `tabdriver-firefox.xpi` below and open it in Firefox. It updates itself.
     **Chrome, Arc, Brave, Edge**: unzip `tabdriver-chrome.zip`, then *Load unpacked* in `chrome://extensions` (Developer mode).
 
 homebrew_casks:
