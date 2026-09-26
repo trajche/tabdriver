@@ -11,6 +11,11 @@
           "version": "0.2.2",
           "update_link": "https://github.com/trajche/tabdriver/releases/download/v0.2.2/tabdriver-firefox.xpi",
           "update_hash": "sha256:ae294237c3c2ed06b10aa49971c5cd3dab25cbce0a37ad95750773617a3d7465"
+        },
+        {
+          "version": "0.2.3",
+          "update_link": "https://github.com/trajche/tabdriver/releases/download/v0.2.3/tabdriver-firefox.xpi",
+          "update_hash": "sha256:caaa48db80c0290185f63054f63bc3ddc27d8e9ed2181ab1dabfa1617d20722b"
         }
       ]
     }
