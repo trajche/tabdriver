@@ -30,7 +30,7 @@ EXT_FILES := background.js page-agent.js popup.html popup.js
 
 firefox: ## Firefox build of the extension: build/firefox/ (load via about:debugging) and dist/tabdriver-firefox.xpi
 	@rm -rf build/firefox && mkdir -p build/firefox dist
-	cd extension && cp $(EXT_FILES) ../build/firefox/ && cp manifest.firefox.json ../build/firefox/manifest.json
+	cd extension && cp -R $(EXT_FILES) icons ../build/firefox/ && cp manifest.firefox.json ../build/firefox/manifest.json
 	rm -f dist/tabdriver-firefox.xpi && cd build/firefox && zip -qr ../../dist/tabdriver-firefox.xpi .
 	@echo "build/firefox/  dist/tabdriver-firefox.xpi (unsigned)"
 

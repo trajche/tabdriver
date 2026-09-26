@@ -77,6 +77,7 @@ async function launchFirefox() {
     name: 'com.tabdriver.host', description: 't', path: BIN, type: 'stdio', allowed_extensions: ['tabdriver@firefox'],
   }));
   process.on('exit', restore);
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130));
 
   const profile = mkdtempSync(join(tmpdir(), 'ffp-'));
   const prefs = {

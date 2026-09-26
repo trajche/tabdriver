@@ -26,11 +26,46 @@ const ready = (async () => {
   for (const id of s.controlled || []) if (open.has(id)) controlled.add(id);
   lastTabId = open.has(s.lastTabId) ? s.lastTabId : null;
 })();
+ready.then(() => updateSidebarBadges());
 
 function persist() {
   api.storage.session.set({ controlled: [...controlled], lastTabId }).catch(() => {});
   updateBadges();
+  updateSidebarBadges();
 }
+
+// ---------- sidebar tab badges ----------
+// Sidebar extensions that take tab badges get an "AI" badge on every controlled tab, so the
+// user sees in their tab list which tabs agents drive. Arcsidebar (Firefox) is the one so far.
+const BADGE_HOSTS = browserName() === 'firefox' ? ['arc@sidebar'] : [];
+const badgesSent = new Map(); // host -> JSON of the badges it last accepted
+
+function controlledBadges() {
+  return [...controlled].map((tabId) => ({
+    tabId,
+    label: 'AI',
+    title: `${tabAgent.get(tabId) || 'An AI agent'} is controlling this tab`,
+  }));
+}
+
+// Send when the badges changed, or to hosts that missed them (not installed yet, restarted).
+function updateSidebarBadges() {
+  const badges = controlledBadges();
+  const json = JSON.stringify(badges);
+  for (const host of BADGE_HOSTS) {
+    if (badgesSent.get(host) === json) continue;
+    api.runtime.sendMessage(host, { type: 'arcsidebar:set-badges', badges })
+      .then(() => badgesSent.set(host, json), () => badgesSent.delete(host));
+  }
+}
+
+api.runtime.onMessageExternal.addListener((msg, sender) => {
+  // A host restarted and lost its badges.
+  if (msg?.type === 'arcsidebar:ready' && BADGE_HOSTS.includes(sender.id)) {
+    badgesSent.delete(sender.id);
+    ready.then(updateSidebarBadges);
+  }
+});
 
 async function getSettings() {
   return { ...DEFAULTS, ...(await api.storage.local.get(Object.keys(DEFAULTS))) };
@@ -131,6 +166,7 @@ async function onHostMessage(p, msg) {
 api.alarms.create('reconnect', { periodInMinutes: 0.5 });
 api.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== 'reconnect') return;
+  updateSidebarBadges();
   if ((await getSettings()).enabled && !port) connect();
 });
 getSettings().then((s) => (s.enabled ? connect() : setStatus('disabled')));
@@ -171,7 +207,28 @@ function useTab(tabId, agent) {
 }
 
 function tabSummary(t) {
-  return { tabId: t.id, windowId: t.windowId, title: t.title, url: t.url, active: t.active, controlled: controlled.has(t.id), status: t.status };
+  return {
+    tabId: t.id, windowId: t.windowId, title: t.title, url: t.url, active: t.active, controlled: controlled.has(t.id), status: t.status,
+    ...(t.hidden ? { hidden: true } : {}),
+  };
+}
+
+// Open agent tabs from the user's current tab, in its container (Firefox). Sidebar tab
+// managers such as Arcsidebar file a tab with an opener under the opener's space; a tab
+// without one looks like a fresh Ctrl+T tab, which they may replace or close.
+// The window is picked explicitly: Firefox fails to create a tab when the last focused
+// window is not a normal browser window.
+async function newTabProps(params) {
+  const props = { url: params.url, active: params.active ?? true };
+  const win = await api.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+  if (!win || win.incognito) return props;
+  props.windowId = win.id;
+  const [opener] = await api.tabs.query({ windowId: win.id, active: true });
+  if (opener) {
+    props.openerTabId = opener.id;
+    if (opener.cookieStoreId && opener.cookieStoreId !== 'firefox-default') props.cookieStoreId = opener.cookieStoreId;
+  }
+  return props;
 }
 
 function waitForLoad(tabId, timeoutMs = 30000) {
@@ -349,7 +406,11 @@ async function handle(method, params) {
     }
 
     case 'open_tab': {
-      const tab = await api.tabs.create({ url: params.url, active: params.active ?? true });
+      const props = await newTabProps(params);
+      // With every window closed (macOS keeps the app running), a tab needs a new window.
+      const tab = props.windowId != null || (await api.windows.getAll({ windowTypes: ['normal'] })).length
+        ? await api.tabs.create(props)
+        : (await api.windows.create({ url: params.url, focused: props.active })).tabs[0];
       controlled.add(tab.id);
       await waitForLoad(tab.id);
       await markControlled(tab.id, params._agent);
