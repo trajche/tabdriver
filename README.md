@@ -21,7 +21,7 @@ One Go binary is both the MCP server and the native messaging host. No ports, no
 
 ```sh
 # macOS
-brew tap trajche/tabdriver https://github.com/trajche/tabdriver && brew install tabdriver
+brew tap trajche/tabdriver https://github.com/trajche/tabdriver && brew trust trajche/tabdriver && brew install tabdriver
 
 # macOS, Linux
 curl -fsSL https://raw.githubusercontent.com/trajche/tabdriver/main/install.sh | sh

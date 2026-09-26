@@ -34,7 +34,7 @@ release:
   footer: |
     ## Install
 
-    **macOS**: `brew tap trajche/tabdriver https://github.com/trajche/tabdriver && brew install tabdriver`
+    **macOS**: `brew tap trajche/tabdriver https://github.com/trajche/tabdriver && brew trust trajche/tabdriver && brew install tabdriver`
     **macOS / Linux**: `curl -fsSL https://raw.githubusercontent.com/trajche/tabdriver/main/install.sh | sh`
     **Windows**: `irm https://raw.githubusercontent.com/trajche/tabdriver/main/install.ps1 | iex`, or `scoop bucket add tabdriver https://github.com/trajche/tabdriver; scoop install tabdriver`
 
