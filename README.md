@@ -76,7 +76,16 @@ Run `tabdriver` without arguments to print the config for other agents.
 
 `browser_status` `select_browser` `list_tabs` `open_tab` `close_tab` `navigate` `request_tab_access`
 `release_tab` `snapshot` `click` `type` `select_option` `press_key` `scroll` `wait_for` `get_text`
-`screenshot` `evaluate` `wait_for_user` `list_downloads` `wait_for_download` `upload_file`
+`screenshot` (`path`, `annotate`) `console` `errors` `evaluate` `wait_for_user` `list_downloads`
+`wait_for_download` `upload_file` `dogfood_guide`
+
+## Dogfood
+
+Exploratory QA of a web app in your own browser: the agent uses it like a user, logs bugs and UX
+problems, and writes a report with annotated screenshots and console errors for every issue.
+In Claude Code, run `/mcp__tabdriver__dogfood https://app.example.com`; other agents: "dogfood
+app.example.com" (they call `dogfood_guide`). The report goes to `./dogfood-output/`. The agent hands
+you logins and 2FA, and doesn't pay, delete or send anything.
 
 ## Security
 

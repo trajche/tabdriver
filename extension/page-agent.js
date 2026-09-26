@@ -236,6 +236,10 @@
           border: 2px solid #d97757; opacity: 0; }
         .pointer.press .ring { animation: ring .3s ease-out; }
         @keyframes ring { from { transform: scale(.3); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
+        .anno { position: fixed; border: 1.5px solid #d97757; background: rgba(217,119,87,.06); border-radius: 3px; }
+        .anno span { position: absolute; left: -1.5px; bottom: 100%; background: #d97757; color: #fff; font-size: 10px;
+          font-weight: 700; line-height: 1; padding: 2px 3px; border-radius: 3px 3px 0 0; }
+        .anno.inside span { bottom: auto; top: -1px; border-radius: 3px 0 3px 0; }
       </style>
       <div class="pointer" hidden><div class="ring"></div>
         <svg viewBox="0 0 24 24"><path d="M4 2v17l4.5-4.5 3 6.5 2.6-1.1-3-6.4H17.5z" fill="#d97757" stroke="#fff"
@@ -372,17 +376,57 @@
   }
 
   // ---------- actions ----------
-  function centerOf(el) {
+  // Bounding box in this window's viewport, offset by any same-origin iframes around `el`.
+  function rectOf(el) {
     const r = el.getBoundingClientRect();
-    // Account for same-origin iframes: offset by the frame's position.
-    let x = r.left + r.width / 2, y = r.top + r.height / 2;
+    let left = r.left, top = r.top;
     let win = el.ownerDocument.defaultView;
     while (win && win !== window && win.frameElement) {
       const fr = win.frameElement.getBoundingClientRect();
-      x += fr.left; y += fr.top;
+      left += fr.left; top += fr.top;
       win = win.parent;
     }
-    return { x, y };
+    return { left, top, width: r.width, height: r.height };
+  }
+
+  function centerOf(el) {
+    const r = rectOf(el);
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  // What a real click at the element's center would hit instead, if something covers it
+  // (a cookie banner, a modal backdrop). Our synthetic events still reach the element.
+  function coveredBy(el) {
+    if (el.ownerDocument !== document) return null;
+    const { x, y } = centerOf(el);
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || hit === el || el.contains(hit) || hit.contains(el) || isOurUi(hit)) return null;
+    const id = hit.id ? `#${hit.id}` : '';
+    const cls = typeof hit.className === 'string' && hit.className.trim() ? `.${hit.className.trim().split(/\s+/).slice(0, 2).join('.')}` : '';
+    return `<${hit.tagName.toLowerCase()}${id}${cls}>`;
+  }
+
+  // Label every visible interactive element in the viewport with its snapshot ref, for screenshots.
+  function annotate({ on }) {
+    const { root, pill } = getUi();
+    root.querySelectorAll('.anno').forEach((n) => n.remove());
+    pill.style.visibility = on ? 'hidden' : '';
+    if (!on) return 0;
+    let n = 0;
+    for (const el of walk(document.documentElement)) {
+      if (!isInteractive(el) || !isVisible(el)) continue;
+      const r = rectOf(el);
+      if (r.top + r.height < 0 || r.top > innerHeight || r.left + r.width < 0 || r.left > innerWidth) continue;
+      const box = document.createElement('div');
+      box.className = r.top < 14 ? 'anno inside' : 'anno'; // label above the box, unless that's off-screen
+      box.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;`;
+      const label = document.createElement('span');
+      label.textContent = refFor(el);
+      box.appendChild(label);
+      root.appendChild(box);
+      n++;
+    }
+    return n;
   }
 
   // Bring `el` into view, move the agent pointer onto it, and flag it. `press` shows a click.
@@ -399,6 +443,7 @@
   async function click({ ref }) {
     const el = resolve(ref);
     await prepare(el, 'click', true);
+    const covered = coveredBy(el);
     const { x, y } = centerOf(el);
     const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window };
     el.dispatchEvent(new PointerEvent('pointerover', opts));
@@ -408,7 +453,8 @@
     el.dispatchEvent(new PointerEvent('pointerup', { ...opts, pointerId: 1, isPrimary: true }));
     el.dispatchEvent(new MouseEvent('mouseup', opts));
     el.click();
-    return `Clicked ${describe(el, isInteractive(el) || el.tagName.toLowerCase())}`;
+    return `Clicked ${describe(el, isInteractive(el) || el.tagName.toLowerCase())}` +
+      (covered ? `\nNote: ${covered} covers this element, so a real click would hit that instead.` : '');
   }
 
   async function pointFor({ ref }) {
@@ -561,7 +607,7 @@
 
   const methods = {
     snapshot, click, pointFor, type, select_option: selectOption, press_key: pressKey, scroll,
-    wait_for: waitFor, get_text: getText, upload_file: uploadFiles, setControlled, showPrompt, hidePrompt,
+    wait_for: waitFor, get_text: getText, upload_file: uploadFiles, setControlled, showPrompt, hidePrompt, annotate,
   };
 
   window.__tabdriver = {

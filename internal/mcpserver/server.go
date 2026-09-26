@@ -47,6 +47,20 @@ type (
 		URL    *string `json:"url,omitempty"`
 		Action *string `json:"action,omitempty" jsonschema:"One of: back, forward, reload."`
 	}
+	screenshotIn struct {
+		tabArg
+		Path     *string `json:"path,omitempty" jsonschema:"Also save it to this file (.png or .jpg; folders are created). Relative paths are resolved against the MCP server's working directory."`
+		Annotate *bool   `json:"annotate,omitempty" jsonschema:"Label each visible interactive element with its snapshot ref (e12), to match elements to what you see."`
+	}
+	consoleIn struct {
+		tabArg
+		Level *string `json:"level,omitempty" jsonschema:"all (default), error, warn or info."`
+		Clear *bool   `json:"clear,omitempty" jsonschema:"Empty the log after reading, to see only new messages next time."`
+	}
+	errorsIn struct {
+		tabArg
+		Clear *bool `json:"clear,omitempty" jsonschema:"Empty the log after reading, to see only new errors next time."`
+	}
 	snapshotIn struct {
 		tabArg
 		MaxTextChars *int  `json:"maxTextChars,omitempty" jsonschema:"Cap on page text length (default 6000)."`
@@ -247,15 +261,29 @@ func register(s *mcp.Server, h *hub.Hub) {
 	forward(s, h, "get_text", "Get the full text content of an element (or the whole page) without truncation.", fixed[getTextIn](d30))
 
 	mcp.AddTool(s, &mcp.Tool{Name: "screenshot",
-		Description: "Take a screenshot of the visible part of a controlled tab (the tab is brought to front)."},
-		func(_ context.Context, _ *mcp.CallToolRequest, in tabArg) (*mcp.CallToolResult, any, error) {
-			data, err := h.Call("screenshot", in, 20*time.Second)
+		Description: "Take a screenshot of the visible part of a controlled tab (the tab is brought to front). " +
+			"Set path to save it as evidence, and annotate to label elements with their snapshot refs."},
+		func(_ context.Context, _ *mcp.CallToolRequest, in screenshotIn) (*mcp.CallToolResult, any, error) {
+			path := ""
+			if in.Path != nil && *in.Path != "" {
+				p, err := expandPath(*in.Path)
+				if err != nil {
+					return nil, nil, err
+				}
+				path = p
+			}
+			format := "jpeg"
+			if strings.EqualFold(filepath.Ext(path), ".png") {
+				format = "png"
+			}
+			data, err := h.Call("screenshot", map[string]any{"tabId": in.TabID, "annotate": in.Annotate != nil && *in.Annotate, "format": format}, 20*time.Second)
 			if err != nil {
 				return nil, nil, err
 			}
 			var shot struct {
 				MimeType string `json:"mimeType"`
 				Data     string `json:"data"`
+				Labels   int    `json:"labels"`
 			}
 			if err := json.Unmarshal(data, &shot); err != nil {
 				return nil, nil, err
@@ -264,8 +292,36 @@ func register(s *mcp.Server, h *hub.Hub) {
 			if err != nil {
 				return nil, nil, err
 			}
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{Data: raw, MIMEType: shot.MimeType}}}, nil, nil
+			content := []mcp.Content{&mcp.ImageContent{Data: raw, MIMEType: shot.MimeType}}
+			var notes []string
+			if path != "" {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return nil, nil, err
+				}
+				if err := os.WriteFile(path, raw, 0o644); err != nil {
+					return nil, nil, err
+				}
+				notes = append(notes, "Saved "+path)
+			}
+			if in.Annotate != nil && *in.Annotate {
+				notes = append(notes, fmt.Sprintf("%d elements labelled with their refs.", shot.Labels))
+			}
+			if len(notes) > 0 {
+				content = append(content, &mcp.TextContent{Text: strings.Join(notes, "\n")})
+			}
+			return &mcp.CallToolResult{Content: content}, nil, nil
 		})
+
+	forward(s, h, "console",
+		"Console messages of a controlled tab's current page (console.log/info/warn/error), recorded since it started loading.",
+		fixed[consoleIn](d30))
+
+	forward(s, h, "errors",
+		"Errors on a controlled tab's current page: uncaught exceptions, unhandled promise rejections, console.error, "+
+			"resources that failed to load, and HTTP 4xx/5xx responses. Check it after actions that might fail silently.",
+		fixed[errorsIn](d30))
+
+	addDogfood(s)
 
 	forward(s, h, "evaluate",
 		"Run a JavaScript expression in the page and return the JSON result. Chromium only: it uses the debugger API "+
@@ -304,6 +360,18 @@ func register(s *mcp.Server, h *hub.Hub) {
 		})
 }
 
+// expandPath resolves ~ and relative paths to an absolute path.
+func expandPath(p string) (string, error) {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		p = filepath.Join(home, p[1:])
+	}
+	return filepath.Abs(p)
+}
+
 type uploadFile struct {
 	Name string `json:"name"`
 	Mime string `json:"mime"`
@@ -314,14 +382,10 @@ func readFiles(paths []string) ([]uploadFile, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("paths must not be empty")
 	}
-	home, _ := os.UserHomeDir()
 	var total int64
 	var files []uploadFile
 	for _, p := range paths {
-		if p == "~" || strings.HasPrefix(p, "~/") {
-			p = filepath.Join(home, p[1:])
-		}
-		full, err := filepath.Abs(p)
+		full, err := expandPath(p)
 		if err != nil {
 			return nil, err
 		}

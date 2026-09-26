@@ -359,6 +359,7 @@ async function page(tabId, method, params) {
 
 async function markControlled(tabId, agent) {
   controlled.add(tabId);
+  injectRecorder(tabId);
   if (agent) { tabAgent.set(tabId, agent); agentTab.set(agent, tabId); noteActivity(tabId); }
   lastTabId = tabId;
   persist();
@@ -373,6 +374,7 @@ async function release(tabId) {
 
 // Re-inject UI after navigations in controlled tabs; re-show pending prompts.
 api.tabs.onUpdated.addListener(async (tabId, info) => {
+  if (info.status === 'loading' && controlled.has(tabId)) injectRecorder(tabId);
   if (info.status !== 'complete') return;
   await ready;
   if (controlled.has(tabId)) await page(tabId, 'setControlled', controlParams(tabId)).catch(() => {});
@@ -590,9 +592,32 @@ async function handle(method, params) {
       const tab = await api.tabs.get(id);
       await api.tabs.update(id, { active: true });
       await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
+      const labels = params.annotate ? await page(id, 'annotate', { on: true }) : 0;
       await new Promise((r) => setTimeout(r, 300));
-      const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 70 });
-      return { mimeType: 'image/jpeg', data: dataUrl.split(',')[1] };
+      const png = params.format === 'png';
+      try {
+        const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, png ? { format: 'png' } : { format: 'jpeg', quality: 70 });
+        return { mimeType: png ? 'image/png' : 'image/jpeg', data: dataUrl.split(',')[1], labels };
+      } finally {
+        if (params.annotate) await page(id, 'annotate', { on: false }).catch(() => {});
+      }
+    }
+
+    case 'console':
+    case 'errors': {
+      const id = requireControlled(params);
+      const log = await readPageLog(id, params.clear);
+      if (!log) {
+        await injectRecorder(id);
+        return 'Nothing recorded on this page yet. Recording starts now; reload the page to catch errors while it loads.';
+      }
+      const wanted = method === 'errors'
+        ? log.filter((e) => e.level === 'error')
+        : log.filter((e) => e.type === 'console' && (!params.level || params.level === 'all' || e.level === params.level));
+      const lines = wanted.map((e) => `+${(e.at / 1000).toFixed(1)}s [${e.type === 'console' ? e.level : e.type}] ${e.text}` +
+        (e.source ? `  (${e.source})` : ''));
+      const what = method === 'errors' ? 'errors' : 'console messages';
+      return lines.length ? lines.join('\n') : `No ${what} since this page loaded.`;
     }
 
     case 'evaluate': {
@@ -640,6 +665,76 @@ async function handle(method, params) {
     default:
       throw new Error(`Unknown method ${method}`);
   }
+}
+
+// ---------- page console and errors ----------
+// Console output and errors are only visible from the page's own JS world. In controlled tabs
+// a small recorder goes in as each page starts loading and keeps its last 300 entries: console
+// calls, uncaught errors, unhandled rejections, resources that failed to load, HTTP errors.
+function installRecorder() {
+  const key = Symbol.for('tabdriver.log');
+  if (window[key]) return;
+  const log = (window[key] = []);
+  const t0 = performance.timeOrigin;
+  const str = (v) => {
+    if (typeof v === 'string') return v;
+    if (v instanceof Error) {
+      // Chromium's stack starts with "Name: message"; Firefox's is only the frames.
+      const head = `${v.name}: ${v.message}`;
+      return v.stack?.startsWith(head) ? v.stack : `${head}${v.stack ? `\n${v.stack}` : ''}`;
+    }
+    try { return JSON.stringify(v) ?? String(v); } catch { return String(v); }
+  };
+  const push = (e) => {
+    log.push({ at: Date.now() - t0, ...e, text: String(e.text).slice(0, 800) });
+    if (log.length > 300) log.shift();
+  };
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    const orig = console[level];
+    console[level] = function (...args) {
+      push({ type: 'console', level: level === 'log' || level === 'debug' ? 'info' : level, text: args.map(str).join(' ') });
+      return orig.apply(this, args);
+    };
+  }
+  addEventListener('error', (e) => {
+    const el = e.target;
+    if (el && el !== window && el.tagName) {
+      push({ type: 'resource', level: 'error', text: `Failed to load <${el.tagName.toLowerCase()}> ${el.currentSrc || el.src || el.href || ''}` });
+    } else {
+      push({ type: 'exception', level: 'error', text: e.error ? str(e.error) : e.message, source: e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : '' });
+    }
+  }, true);
+  addEventListener('unhandledrejection', (e) => push({ type: 'exception', level: 'error', text: `Unhandled rejection: ${str(e.reason)}` }));
+  try {
+    const seen = new Set(); // Firefox can deliver a buffered entry twice
+    new PerformanceObserver((list) => {
+      for (const r of list.getEntries()) {
+        const id = `${r.name} ${r.startTime}`;
+        if (!(r.responseStatus >= 400) || seen.has(id)) continue;
+        seen.add(id);
+        push({ type: 'network', level: 'error', text: `HTTP ${r.responseStatus} ${r.name}` });
+      }
+    }).observe({ type: 'resource', buffered: true });
+  } catch {}
+}
+
+function injectRecorder(tabId) {
+  return api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: installRecorder })
+    .catch(() => {});
+}
+
+async function readPageLog(tabId, clear) {
+  const [res] = await api.scripting.executeScript({
+    target: { tabId }, world: 'MAIN', args: [!!clear],
+    func: (clear) => {
+      const log = window[Symbol.for('tabdriver.log')];
+      if (!log) return null;
+      const out = log.slice();
+      if (clear) log.length = 0;
+      return out;
+    },
+  });
+  return res?.result ?? null;
 }
 
 // Firefox only: build the files and drag events in the page's world so the page can read them.

@@ -30,8 +30,12 @@ const PAGE = `<!doctype html><title>Test Bank</title><h1>Transactions</h1>
 <a href="/tx.csv" download="tx.csv">Download CSV</a>
 <div id="dz" style="width:200px;height:50px;border:1px solid" ondragover="event.preventDefault()"
  ondrop="event.preventDefault();const f=event.dataTransfer.files[0];f.arrayBuffer().then(b=>r.textContent='drop:'+f.name+':'+b.byteLength)">drop</div><p id="r"></p>
-<input type="file" id="fi" onchange="fr.textContent='file:'+this.files[0].name+':'+this.files[0].size"><p id="fr"></p>`;
+<input type="file" id="fi" onchange="fr.textContent='file:'+this.files[0].name+':'+this.files[0].size"><p id="fr"></p>
+<button onclick="console.warn('careful now');throw new Error('boom from Break')">Break</button>
+<img src="/missing.png" alt="">
+<div style="position:relative"><button>Under banner</button><div id="banner" style="position:absolute;inset:0;background:rgba(0,0,0,.1)"></div></div>`;
 const srv = http.createServer((req, res) => {
+  if (req.url === '/missing.png') { res.writeHead(404); return res.end(); }
   if (req.url === '/tx.csv') { res.writeHead(200, { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="tx.csv"' }); return res.end('a,b\n1,2\n'); }
   res.writeHead(200, { 'content-type': 'text/html' }); res.end(PAGE);
 }).listen(8813);
@@ -146,6 +150,7 @@ async function agent(name) {
   return c;
 }
 let fails = 0;
+const expect = (ok, what) => { if (!ok) fails++; console.log(`${ok ? '  ok' : 'FAIL'} ${what}`); };
 const call = async (c, name, args = {}, expectError = false) => {
   const r = await c.callTool({ name, arguments: args });
   const t = r.content[0].type === 'image' ? `<image ${r.content[0].mimeType} ${r.content[0].data.length} b64>` : r.content[0].text;
@@ -176,6 +181,24 @@ await call(claude, 'screenshot');
 await call(claude, 'click', { ref: ref(/Download CSV/) });
 await call(claude, 'wait_for_download', { timeoutMs: 10000 });
 await call(claude, 'click', { ref: 'e999' }, true);
+
+// Console, errors, covered elements, annotated screenshots saved to disk.
+const snap2 = await call(claude, 'snapshot', { includeText: false });
+const ref2 = (re) => snap2.split('\n').find(l => re.test(l)).match(/\[(e\d+)\]/)[1];
+await call(claude, 'click', { ref: ref2(/"Break"/) });
+const errs = await call(claude, 'errors');
+expect(/boom from Break/.test(errs) && /missing\.png/.test(errs), 'errors has the exception and the failed image');
+const cons = await call(claude, 'console', { level: 'warn' });
+expect(/careful now/.test(cons), 'console has the warning');
+const under = await call(claude, 'click', { ref: ref2(/Under banner/) });
+expect(/div#banner.*covers this element/.test(under), 'click reports the covering banner');
+const shotPath = join(HOME, 'shots', 'annotated.png');
+const shot = await claude.callTool({ name: 'screenshot', arguments: { path: shotPath, annotate: true } });
+const note = shot.content.find(c => c.type === 'text')?.text || '';
+expect(existsSync(shotPath) && readFileSync(shotPath).subarray(1, 4).toString() === 'PNG' && /\d+ elements labelled/.test(note), `annotated PNG saved (${note.replace(/\n/g, '; ')})`);
+const prompts = await claude.listPrompts();
+const dog = await claude.getPrompt({ name: 'dogfood', arguments: { url: 'https://app.example.com' } });
+expect(prompts.prompts.some(p => p.name === 'dogfood') && /dogfood-output\/app-example-com-/.test(dog.messages[0].content.text), 'dogfood prompt');
 
 await call(codex, 'open_tab', { url: 'http://127.0.0.1:8813/?codex' });
 await call(codex, 'upload_file', { selector: '#dz', paths: [BIG] });
