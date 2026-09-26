@@ -43,7 +43,7 @@ then run `tabdriver install`.
 
 **2. Extension**
 
-- Firefox: open [tabdriver-firefox.xpi](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver-firefox.xpi) in Firefox (signed by Mozilla, updates itself)
+- Firefox 142+: open [tabdriver-firefox.xpi](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver-firefox.xpi) in Firefox (signed by Mozilla, updates itself)
 - Chrome, Arc, Brave, Edge: unzip [tabdriver-chrome.zip](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver-chrome.zip),
   then `chrome://extensions` → *Developer mode* → *Load unpacked*
 

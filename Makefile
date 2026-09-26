@@ -53,7 +53,7 @@ test: vet build ## End-to-end test in a throwaway Chromium (needs Node)
 	node test/e2e.mjs bin/tabdriver
 	node test/missing-app.mjs bin/tabdriver
 
-test-firefox: vet build firefox ## Same end-to-end test in a throwaway Firefox profile (needs Node and Firefox 128+)
+test-firefox: vet build firefox ## Same end-to-end test in a throwaway Firefox profile (needs Node and Firefox 142+)
 	[ -d test/node_modules ] || (cd test && npm install)
 	node test/e2e.mjs bin/tabdriver --firefox
 
