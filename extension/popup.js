@@ -25,10 +25,21 @@ function list(ul, items, empty) {
 async function render() {
   const state = await send({ type: 'get-state' });
   if (!state || state.error) return;
+  const missing = state.status === 'missing';
   $('dot').className = `dot ${state.status}`;
-  $('status').textContent = state.status === 'connected' ? 'ready' : state.status;
+  $('status').textContent = state.status === 'connected' ? 'ready' : missing ? 'app not found' : state.status;
   $('enabled').checked = state.enabled;
-  $('detail').textContent = state.status === 'connected' ? '' : state.statusDetail;
+  $('detail').textContent = state.status === 'connected' || missing ? '' : state.statusDetail;
+
+  $('setup').hidden = !missing;
+  $('main').hidden = missing;
+  if (missing && !$('commands').childElementCount) renderInstallCommands($('commands'), state.os);
+  const outdated = state.status === 'connected' && isOlderVersion(state.hostVersion, state.extensionVersion);
+  $('update').hidden = !outdated;
+  if (outdated) {
+    $('update').textContent = `The tabdriver app (${state.hostVersion}) is older than this extension ` +
+      `(${state.extensionVersion}). Update it: ${updateHint(state.os)}.`;
+  }
 
   list($('agents'), state.agents.map((a) => item(a)),
     state.status === 'connected' ? 'None: start an agent with the tabdriver MCP server' : '—');
@@ -47,6 +58,17 @@ $('control').onclick = async () => {
   render();
 };
 
+$('check').onclick = async () => {
+  $('check').textContent = 'Checking…';
+  await send({ type: 'check-app' });
+  setTimeout(() => { $('check').textContent = 'Check again'; render(); }, 1000);
+};
+
+$('guide').onclick = () => {
+  api.tabs.create({ url: api.runtime.getURL('setup.html') });
+  window.close();
+};
+
 $('enabled').onchange = async (e) => {
   await send({ type: 'set-enabled', enabled: e.target.checked });
   render();
@@ -54,3 +76,4 @@ $('enabled').onchange = async (e) => {
 
 api.runtime.onMessage.addListener((m) => { if (m.type === 'status-changed') render(); });
 render();
+send({ type: 'check-app' }); // opening the popup retries a missing app right away

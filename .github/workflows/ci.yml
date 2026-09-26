@@ -21,6 +21,7 @@ jobs:
         run: |
           cd test && npm ci && npx playwright install --with-deps chromium && cd ..
           node test/e2e.mjs bin/tabdriver
+          node test/missing-app.mjs bin/tabdriver
       - name: Lint the Firefox add-on
         run: make firefox && npx --yes web-ext@8 lint --source-dir build/firefox --self-hosted
       - uses: goreleaser/goreleaser-action@v6

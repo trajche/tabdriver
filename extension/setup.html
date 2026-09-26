@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Set up Tab Driver</title>
+<link rel="icon" href="icons/icon-32.png">
+<style>
+  :root { --fg: #1f1f1f; --muted: #666; --card: #fff; --bg: #f5f4f1; --code: #f1f0ed; --ok: #2e7d32; --warn: #c77a12; --accent: #d97757; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #eee; --muted: #aaa; --card: #26252a; --bg: #1b1a1e; --code: #33313a; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  header img { width: 56px; height: 56px; }
+  h1 { font-size: 24px; margin: 0; }
+  .card { background: var(--card); border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  h2 { font-size: 16px; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  .pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--code); color: var(--muted); }
+  .pill.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .pill.missing { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  .command { margin-bottom: 10px; }
+  .command-label { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .command-row { display: flex; gap: 8px; align-items: flex-start; }
+  .command-row code { flex: 1; font: 13px/1.45 ui-monospace, Menlo, monospace; background: var(--code); padding: 8px 10px;
+    border-radius: 8px; word-break: break-all; user-select: all; }
+  button { font: inherit; font-size: 13px; padding: 7px 12px; border: 0; border-radius: 8px; background: var(--code); color: var(--fg); cursor: pointer; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="icons/icon-128.png" alt=""><h1>Set up Tab Driver</h1></header>
+
+  <section class="card">
+    <h2>1. Install the tabdriver app <span id="status" class="pill">Checking…</span></h2>
+    <div id="install">
+      <p>Tab Driver talks to AI agents through a small free app on your computer. Run this in a terminal;
+        this page notices when it's done.</p>
+      <div id="commands"></div>
+      <p>Or download it yourself: <a id="guide" target="_blank" rel="noreferrer">setup guide</a>.</p>
+    </div>
+    <p id="installed" hidden></p>
+  </section>
+
+  <section class="card">
+    <h2>2. Add it to your agent</h2>
+    <p>Then ask your agent to open a site for you.</p>
+    <div id="agents"></div>
+  </section>
+</main>
+<script src="app-setup.js"></script>
+<script src="setup.js"></script>
+</body>
+</html>

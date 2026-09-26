@@ -46,6 +46,7 @@ type extMsg struct {
 	Error   string          `json:"error,omitempty"`
 	Browser json.RawMessage `json:"browser,omitempty"`
 	Agents  []string        `json:"agents,omitempty"`
+	Version string          `json:"version,omitempty"`
 }
 
 // sockMsg is the wire format between host and MCP servers (newline-delimited JSON).
@@ -197,6 +198,8 @@ func (h *Host) onExtension(m extMsg) {
 		h.mu.Unlock()
 		h.writeMeta()
 		log.Printf("extension hello %s", m.Browser)
+		// Tells the extension the app is installed and which version, before anything else.
+		h.writeNative(extMsg{Type: "host", Version: common.Version})
 		h.notifyAgents()
 		for _, c := range clients {
 			c.send(sockMsg{Type: "browser", Browser: m.Browser})

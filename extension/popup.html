@@ -19,6 +19,18 @@
   li button { padding: 2px 8px; }
   .muted { color: #888; }
   .switch { font-size: 12px; font-weight: normal; display: flex; gap: 4px; align-items: center; }
+  .dot.missing { background: #e8a33d; }
+  #setup h2 { font-size: 14px; margin: 0 0 4px; }
+  #setup p { margin: 0 0 8px; color: #444; }
+  .command { margin-bottom: 8px; }
+  .command-label { font-size: 11px; color: #666; margin-bottom: 2px; }
+  .command-row { display: flex; gap: 6px; align-items: flex-start; }
+  .command-row code { flex: 1; font: 11px/1.4 ui-monospace, Menlo, monospace; background: #f3f3f3; padding: 5px 6px;
+    border-radius: 5px; word-break: break-all; user-select: all; }
+  .command-row button { padding: 4px 8px; font-size: 11px; }
+  .actions { display: flex; gap: 6px; }
+  .actions button { flex: 1; }
+  .hint { background: #fff4e0; border-radius: 6px; padding: 6px 8px; font-size: 12px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -26,13 +38,27 @@
     <label class="switch"><input id="enabled" type="checkbox"> On</label></h1>
   <div id="detail" class="detail"></div>
 
-  <button id="control" class="primary">Let AI agents control this tab</button>
+  <section id="setup" hidden>
+    <h2>Install the Tab Driver app</h2>
+    <p>This extension needs the free tabdriver app on your computer to talk to AI agents. Run this, then check again:</p>
+    <div id="commands"></div>
+    <div class="actions">
+      <button id="check" class="primary">Check again</button>
+      <button id="guide">Setup guide</button>
+    </div>
+  </section>
 
-  <label class="section">Connected agents</label>
-  <ul id="agents"></ul>
+  <div id="main">
+    <div id="update" class="hint" hidden></div>
+    <button id="control" class="primary">Let AI agents control this tab</button>
 
-  <label class="section">Controlled tabs</label>
-  <ul id="tabs"></ul>
+    <label class="section">Connected agents</label>
+    <ul id="agents"></ul>
+
+    <label class="section">Controlled tabs</label>
+    <ul id="tabs"></ul>
+  </div>
+  <script src="app-setup.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

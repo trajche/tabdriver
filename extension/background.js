@@ -9,8 +9,11 @@ const DEFAULTS = { enabled: true };
 
 // ---------- state ----------
 let port = null;
-let status = 'disconnected'; // disconnected | connected | error | disabled
+// connecting | connected | missing (the tabdriver app isn't installed or can't start)
+// | disconnected (the app exited after connecting) | error | disabled
+let status = 'disconnected';
 let statusDetail = '';
+let hostVersion = null; // version the app reported
 let agents = []; // names of agents currently connected through the host
 const controlled = new Set(); // tab ids agents may act on
 const tabAgent = new Map(); // tabId -> name of the agent that last acted on it
@@ -85,7 +88,7 @@ function notifyPopup() {
 function updateBadges() {
   const active = status === 'connected' && agents.length > 0;
   api.action.setBadgeBackgroundColor({ color: active ? '#2e7d32' : '#9e9e9e' });
-  api.action.setBadgeText({ text: status === 'connected' ? (controlled.size ? String(controlled.size) : active ? '✓' : '') : status === 'error' ? '!' : '' });
+  api.action.setBadgeText({ text: status === 'connected' ? (controlled.size ? String(controlled.size) : active ? '✓' : '') : status === 'error' || status === 'missing' ? '!' : '' });
 }
 
 // ---------- native messaging connection ----------
@@ -99,25 +102,45 @@ function connect() {
     return;
   }
   port = p;
+  // The app answers the hello right away, so it only counts as connected once it has spoken.
+  let answered = false;
+  setStatus('connecting');
   const ua = navigator.userAgent;
   p.postMessage({
     type: 'hello',
     browser: { userAgent: ua, name: browserName(), extension: api.runtime.getManifest().version },
   });
-  setStatus('connected');
-  p.onMessage.addListener((msg) => onHostMessage(p, msg));
+  p.onMessage.addListener((msg) => {
+    if (!answered) {
+      answered = true;
+      setStatus('connected');
+    }
+    onHostMessage(p, msg);
+  });
   p.onDisconnect.addListener(() => {
     const err = api.runtime.lastError?.message || p.error?.message || '';
     if (port === p) port = null;
     agents = [];
     chunks.clear();
-    if (/not found|not installed|forbidden|no such native application/i.test(err)) {
-      setStatus('error', 'Native host not installed. Run: tabdriver install, then reload the extension.');
+    if (!answered) {
+      // Not registered, the registered binary is gone, or it's registered for another
+      // extension ID. The browsers word this differently; to the user it's the same fix.
+      hostVersion = null;
+      setStatus('missing', err);
     } else {
-      setStatus('disconnected', err || 'Native host exited.');
+      setStatus('disconnected', err || 'The tabdriver app exited.');
+      setTimeout(() => getSettings().then((st) => st.enabled && connect()), 2000);
     }
   });
 }
+
+// Right after install, open the setup page if the app isn't there yet.
+api.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason !== 'install') return;
+  setTimeout(() => {
+    if (status === 'missing') api.tabs.create({ url: api.runtime.getURL('setup.html') });
+  }, 2000);
+});
 
 function browserName() {
   const ua = navigator.userAgent;
@@ -145,6 +168,11 @@ async function onHostMessage(p, msg) {
     chunks.delete(msg.cid);
     const bytes = Uint8Array.from(atob(c.parts.join('')), (ch) => ch.charCodeAt(0));
     msg = JSON.parse(new TextDecoder().decode(bytes));
+  }
+  if (msg.type === 'host') {
+    hostVersion = msg.version || null;
+    notifyPopup();
+    return;
   }
   if (msg.type === 'agents') {
     agents = msg.agents || [];
@@ -352,10 +380,16 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const s = await getSettings();
         const tabs = await api.tabs.query({});
         return {
-          status, statusDetail, agents, enabled: s.enabled,
+          status, statusDetail, agents, enabled: s.enabled, hostVersion,
+          extensionVersion: api.runtime.getManifest().version,
+          os: (await api.runtime.getPlatformInfo()).os,
           controlled: tabs.filter((t) => controlled.has(t.id)).map((t) => ({ ...tabSummary(t), agent: tabAgent.get(t.id) })),
         };
       }
+      // Popup / setup page: try the app again now instead of waiting for the next alarm.
+      case 'check-app':
+        if ((await getSettings()).enabled && !port) connect();
+        return true;
       case 'set-enabled':
         await api.storage.local.set({ enabled: msg.enabled });
         if (msg.enabled) connect();
