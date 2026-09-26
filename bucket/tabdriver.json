@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/trajche/tabdriver/releases/download/v0.2.0/tabdriver_windows_amd64.zip",
+            "bin": [
+                "tabdriver.exe"
+            ],
+            "hash": "0805c7bef705e5fa36e4d947a488d84d0bdde8515ef4f365841367b4e111e91f"
+        },
+        "arm64": {
+            "url": "https://github.com/trajche/tabdriver/releases/download/v0.2.0/tabdriver_windows_arm64.zip",
+            "bin": [
+                "tabdriver.exe"
+            ],
+            "hash": "d46e42d506d10f3cf439c6cadc8ba21e1cb16dfdb52852350b6051c118cc892d"
+        }
+    },
+    "homepage": "https://github.com/trajche/tabdriver",
+    "license": "MIT",
+    "description": "Let AI agents drive your real browser, with your logins, while you watch",
+    "post_install": [
+        "\u0026 \"$dir\\tabdriver.exe\" install"
+    ]
+}
