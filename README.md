@@ -67,7 +67,8 @@ Run `tabdriver` without arguments to print the config for other agents.
 - `wait_for_user` hands the tab to you and waits for *Done*. Raise your agent's tool timeout for it
   (Claude Code `MCP_TOOL_TIMEOUT`, Codex `tool_timeout_sec`).
 - Several agents can work at once, each in its own tabs.
-- With [Arcsidebar](https://github.com/trajche/arc) in Firefox, controlled tabs get an **AI** badge in the sidebar.
+- With [Arcsidebar](https://github.com/trajche/arc) in Firefox, controlled tabs show a robot in the sidebar
+  (blinking while the agent works), and right-clicking a tab lets agents take it or stops them.
 
 ## Tools
 

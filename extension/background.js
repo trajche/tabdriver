@@ -42,7 +42,7 @@ function persist() {
 // user sees in their tab list which tabs agents drive. It blinks while the agent is working
 // in the tab. Arcsidebar (Firefox) is the one so far; versions without icons show "AI".
 const BADGE_HOSTS = browserName() === 'firefox' ? ['arc@sidebar'] : [];
-const badgesSent = new Map(); // host -> JSON of the badges it last accepted
+const badgesSent = new Map(); // "host message-type" -> JSON the host last accepted
 const ACTIVE_MS = 5000; // an agent counts as working in a tab this long after its last action
 const lastActive = new Map(); // tabId -> when an agent last acted in it
 let activeTimer = null;
@@ -65,22 +65,45 @@ function controlledBadges() {
   }));
 }
 
-// Send when the badges changed, or to hosts that missed them (not installed yet, restarted).
+// The sidebar's tab menu (right-click) gets a toggle: take a tab for agents, or give it back.
+function tabMenu() {
+  const ids = [...controlled];
+  return [
+    { id: 'control', title: 'Let AI agents control this tab', exceptTabIds: ids },
+    { id: 'release', title: 'Stop AI control of this tab', tabIds: ids },
+  ];
+}
+
+// Send when the badges or menu changed, or to hosts that missed them (not installed yet, restarted).
 function updateSidebarBadges() {
-  const badges = controlledBadges();
-  const json = JSON.stringify(badges);
+  const messages = [
+    { type: 'arcsidebar:set-badges', badges: controlledBadges() },
+    { type: 'arcsidebar:set-tab-menu', items: tabMenu() },
+  ];
   for (const host of BADGE_HOSTS) {
-    if (badgesSent.get(host) === json) continue;
-    api.runtime.sendMessage(host, { type: 'arcsidebar:set-badges', badges })
-      .then(() => badgesSent.set(host, json), () => badgesSent.delete(host));
+    for (const msg of messages) {
+      const key = `${host} ${msg.type}`;
+      const json = JSON.stringify(msg);
+      if (badgesSent.get(key) === json) continue;
+      api.runtime.sendMessage(host, msg).then(() => badgesSent.set(key, json), () => badgesSent.delete(key));
+    }
   }
 }
 
 api.runtime.onMessageExternal.addListener((msg, sender) => {
-  // A host restarted and lost its badges.
-  if (msg?.type === 'arcsidebar:ready' && BADGE_HOSTS.includes(sender.id)) {
-    badgesSent.delete(sender.id);
+  if (!BADGE_HOSTS.includes(sender.id)) return;
+  // A host restarted and lost its badges and menu items.
+  if (msg?.type === 'arcsidebar:ready') {
+    for (const key of badgesSent.keys()) if (key.startsWith(`${sender.id} `)) badgesSent.delete(key);
     ready.then(updateSidebarBadges);
+  }
+  if (msg?.type === 'arcsidebar:menu-clicked' && Number.isInteger(msg.tabId)) {
+    ready.then(async () => {
+      if (msg.id === 'release') return release(msg.tabId);
+      if (msg.id !== 'control') return;
+      const tab = await api.tabs.get(msg.tabId).catch(() => null);
+      if (tab && /^(https?|file):/.test(tab.url || '')) await markControlled(tab.id);
+    });
   }
 });
 
