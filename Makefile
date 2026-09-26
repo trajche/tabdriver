@@ -1,9 +1,8 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/trajche/tabdriver/internal/common.Version=$(VERSION)
 PREFIX  ?= $(HOME)/.local
-TARGETS := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
 
-.PHONY: build install uninstall dist firefox firefox-sign test test-firefox vet clean
+.PHONY: build install uninstall snapshot chrome firefox amo test test-firefox vet clean
 
 build: ## Build for this machine into bin/
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/tabdriver ./cmd/tabdriver
@@ -17,25 +16,29 @@ uninstall:
 	-$(PREFIX)/bin/tabdriver uninstall
 	rm -f $(PREFIX)/bin/tabdriver
 
-dist: ## Cross-compile release binaries into dist/
-	@mkdir -p dist
-	@for t in $(TARGETS); do \
-		os=$${t%/*}; arch=$${t#*/}; ext=; [ $$os = windows ] && ext=.exe; \
-		echo "dist/tabdriver-$$os-$$arch$$ext"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" \
-			-o dist/tabdriver-$$os-$$arch$$ext ./cmd/tabdriver || exit 1; \
-	done
+snapshot: ## Local release build with GoReleaser (binaries, archives, cask, scoop) into dist/, publishes nothing
+	go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
 
-EXT_FILES := background.js page-agent.js popup.html popup.js
+# Extension packages in build/. EXT_VERSION (set from the git tag in CI) overrides the manifest version.
+EXT_FILES := background.js page-agent.js popup.html popup.js icons
+EXT_VERSION ?=
+define package_ext # $(1) browser, $(2) source manifest
+	@rm -rf build/$(1) build/tabdriver-$(1).zip && mkdir -p build/$(1)
+	cd extension && cp -R $(EXT_FILES) ../build/$(1)/ && cp $(2) ../build/$(1)/manifest.json
+	$(if $(EXT_VERSION),sed -i.bak 's/"version": "[^"]*"/"version": "$(EXT_VERSION)"/' build/$(1)/manifest.json && rm build/$(1)/manifest.json.bak)
+	cd build/$(1) && zip -qr ../tabdriver-$(1).zip .
+	@echo "build/$(1)/  build/tabdriver-$(1).zip"
+endef
 
-firefox: ## Firefox build of the extension: build/firefox/ (load via about:debugging) and dist/tabdriver-firefox.xpi
-	@rm -rf build/firefox && mkdir -p build/firefox dist
-	cd extension && cp -R $(EXT_FILES) icons ../build/firefox/ && cp manifest.firefox.json ../build/firefox/manifest.json
-	rm -f dist/tabdriver-firefox.xpi && cd build/firefox && zip -qr ../../dist/tabdriver-firefox.xpi .
-	@echo "build/firefox/  dist/tabdriver-firefox.xpi (unsigned)"
+chrome: ## Chrome extension: build/chrome/ and build/tabdriver-chrome.zip
+	$(call package_ext,chrome,manifest.json)
 
-firefox-sign: firefox ## Sign an unlisted .xpi with AMO (needs WEB_EXT_API_KEY and WEB_EXT_API_SECRET)
-	cd build/firefox && npx --yes web-ext sign --channel unlisted --artifacts-dir ../../dist
+firefox: ## Firefox add-on: build/firefox/ (load via about:debugging) and build/tabdriver-firefox.zip
+	$(call package_ext,firefox,manifest.firefox.json)
+
+amo: firefox ## Submit build/firefox to addons.mozilla.org as a listed version (needs WEB_EXT_API_KEY and WEB_EXT_API_SECRET)
+	npx --yes web-ext@8 sign --channel listed --source-dir build/firefox --artifacts-dir build \
+		--amo-metadata amo/metadata.json --approval-timeout 0
 
 vet:
 	go vet ./...

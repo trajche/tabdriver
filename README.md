@@ -17,23 +17,46 @@ One Go binary is both the MCP server and the native messaging host. No ports, no
 
 ## Install
 
-1. **Binary** (Go 1.24+):
-   ```sh
-   make install   # builds ~/.local/bin/tabdriver and registers it with your browsers
-   ```
-2. **Extension**
-   - Chrome, Arc, Brave, Edge: `chrome://extensions` → *Developer mode* → *Load unpacked* → `extension/`
-   - Firefox 128+: `make firefox`, then load `build/firefox/manifest.json` in
-     `about:debugging#/runtime/this-firefox`, or install `dist/tabdriver-firefox.xpi` (unsigned: Developer
-     Edition, Nightly, ESR; `make firefox-sign` signs it for regular Firefox)
-3. **Agent**
-   ```sh
-   claude mcp add --scope user tabdriver -- tabdriver mcp
-   codex mcp add tabdriver -- tabdriver mcp
-   ```
-   Run `tabdriver` without arguments to print the config for other agents.
+**1. App**
 
-The popup dot turns green when the extension reaches the host.
+```sh
+# macOS
+brew tap trajche/tabdriver https://github.com/trajche/tabdriver && brew install tabdriver
+
+# macOS, Linux
+curl -fsSL https://raw.githubusercontent.com/trajche/tabdriver/main/install.sh | sh
+```
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/trajche/tabdriver/main/install.ps1 | iex
+# or: scoop bucket add tabdriver https://github.com/trajche/tabdriver; scoop install tabdriver
+```
+
+Each of these registers the app with your browsers. Or download it directly:
+[macOS arm64](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver_darwin_arm64.tar.gz) ·
+[macOS x64](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver_darwin_amd64.tar.gz) ·
+[Linux x64](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver_linux_amd64.tar.gz) ·
+[Linux arm64](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver_linux_arm64.tar.gz) ·
+[Windows x64](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver_windows_amd64.zip) ·
+[Windows arm64](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver_windows_arm64.zip),
+then run `tabdriver install`.
+
+**2. Extension**
+
+- Firefox: [Tab Driver on addons.mozilla.org](https://addons.mozilla.org/firefox/addon/tab-driver/)
+- Chrome, Arc, Brave, Edge: unzip [tabdriver-chrome.zip](https://github.com/trajche/tabdriver/releases/latest/download/tabdriver-chrome.zip),
+  then `chrome://extensions` → *Developer mode* → *Load unpacked*
+
+The popup dot turns green when the extension reaches the app.
+
+**3. Agent**
+
+```sh
+claude mcp add --scope user tabdriver -- tabdriver mcp
+codex mcp add tabdriver -- tabdriver mcp
+```
+
+Run `tabdriver` without arguments to print the config for other agents.
 
 ## Use
 
@@ -58,17 +81,24 @@ The popup dot turns green when the extension reaches the host.
   `~/.tabdriver/hosts/` that only your user can open.
 - Page content is untrusted and may try to instruct the agent. Watch the tab, and don't let an agent
   approve payments.
-- Chromium's `debugger` permission is used only for `evaluate` and `trusted` clicks. Firefox has no
-  debugger, so there `evaluate` runs in the page and `trusted` clicks aren't available.
+- Chromium's `debugger` permission is used only for `evaluate` and `trusted` clicks. Neither exists
+  in Firefox.
 
 ## Development
 
 ```sh
-make build          # bin/tabdriver
+make install        # build from source (Go) into ~/.local/bin and register it
 make test           # vet + end-to-end test in Chromium (needs Node)
 make test-firefox   # same in a throwaway Firefox profile
-make firefox        # build/firefox/ and dist/tabdriver-firefox.xpi
-make dist           # release binaries for macOS, Linux, Windows
+make firefox chrome # extension packages in build/
+make snapshot       # local release build with GoReleaser, publishes nothing
 ```
 
+Release: push a tag like `v0.3.0`. The workflow builds all binaries, publishes the GitHub release,
+updates the Homebrew cask and Scoop manifest, and submits the add-on to addons.mozilla.org.
+
 Logs: `~/.tabdriver/host.log` (host), stderr (MCP server).
+
+## License
+
+MIT

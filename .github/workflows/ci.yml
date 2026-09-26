@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: make vet build
+      - name: End-to-end test (Chromium)
+        run: |
+          cd test && npm ci && npx playwright install --with-deps chromium && cd ..
+          node test/e2e.mjs bin/tabdriver
+      - name: Lint the Firefox add-on
+        run: make firefox && npx --yes web-ext@8 lint --source-dir build/firefox
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check
+
+  # The installer writes files (macOS) and registry keys (Windows); check it runs there.
+  install:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build -o bin/ ./cmd/tabdriver
+      - name: Pretend Chrome has a profile
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then mkdir -p "$HOME/Library/Application Support/Google/Chrome"
+          else mkdir -p "$LOCALAPPDATA/Google/Chrome"; fi
+      - shell: bash
+        run: |
+          bin/tabdriver version
+          bin/tabdriver install
+          bin/tabdriver uninstall

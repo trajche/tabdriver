@@ -170,7 +170,7 @@ await call(claude, 'select_option', { ref: ref(/combobox/), value: 'This year' }
 await call(claude, 'click', { ref: ref(/Apply filter/) });
 await call(claude, 'wait_for', { text: 'Applied: coffee / y' });
 await call(claude, 'type', { ref: ref(/Login name/), text: 'alice', submit: true });
-await call(claude, 'evaluate', { expression: 'document.getElementById("out").textContent' });
+await call(claude, 'evaluate', { expression: 'document.getElementById("out").textContent' }, FIREFOX); // Chromium only
 await call(claude, 'click', { ref: ref(/Apply filter/), trusted: true }, FIREFOX); // Firefox has no debugger API
 await call(claude, 'screenshot');
 await call(claude, 'click', { ref: ref(/Download CSV/) });

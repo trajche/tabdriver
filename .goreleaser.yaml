@@ -1,0 +1,92 @@
+version: 2
+project_name: tabdriver
+
+builds:
+  - main: ./cmd/tabdriver
+    binary: tabdriver
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/trajche/tabdriver/internal/common.Version={{ .Version }}
+
+archives:
+  # No version in the name, so /releases/latest/download/<name> always points at the newest build.
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^Merge ", "^Release "]
+
+release:
+  extra_files:
+    - glob: build/tabdriver-chrome.zip
+  footer: |
+    ## Install
+
+    **macOS**: `brew tap trajche/tabdriver https://github.com/trajche/tabdriver && brew install tabdriver`
+    **macOS / Linux**: `curl -fsSL https://raw.githubusercontent.com/trajche/tabdriver/main/install.sh | sh`
+    **Windows**: `irm https://raw.githubusercontent.com/trajche/tabdriver/main/install.ps1 | iex`, or `scoop bucket add tabdriver https://github.com/trajche/tabdriver; scoop install tabdriver`
+
+    **Firefox add-on**: [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/tab-driver/)
+    **Chrome, Arc, Brave, Edge**: unzip `tabdriver-chrome.zip`, then *Load unpacked* in `chrome://extensions` (Developer mode).
+
+homebrew_casks:
+  - name: tabdriver
+    repository:
+      owner: trajche
+      name: tabdriver
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Casks
+    commit_author:
+      name: tabdriver-release
+      email: tabdriver-release@users.noreply.github.com
+    commit_msg_template: "Release {{ .Tag }}: Homebrew cask"
+    homepage: https://github.com/trajche/tabdriver
+    description: Let AI agents drive your real browser, with your logins, while you watch
+    license: MIT
+    binaries: [tabdriver]
+    hooks:
+      post:
+        # Unsigned binary: drop the download quarantine, then register the browser host.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tabdriver"]
+          end
+          system_command "#{HOMEBREW_PREFIX}/bin/tabdriver", args: ["install"]
+      pre:
+        uninstall: |
+          system_command "#{staged_path}/tabdriver", args: ["uninstall"], must_succeed: false
+    caveats: |
+      Registered with your browsers. Next: install the browser extension and add `tabdriver mcp`
+      to your agent (run `tabdriver` for the exact lines). https://github.com/trajche/tabdriver
+
+scoops:
+  - name: tabdriver
+    repository:
+      owner: trajche
+      name: tabdriver
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: bucket
+    commit_author:
+      name: tabdriver-release
+      email: tabdriver-release@users.noreply.github.com
+    commit_msg_template: "Release {{ .Tag }}: Scoop manifest"
+    homepage: https://github.com/trajche/tabdriver
+    description: Let AI agents drive your real browser, with your logins, while you watch
+    license: MIT
+    # $dir is the app's "current" folder, so the registered host path survives upgrades.
+    post_install:
+      - '& "$dir\tabdriver.exe" install'

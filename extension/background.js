@@ -498,7 +498,8 @@ async function handle(method, params) {
 
     case 'evaluate': {
       const id = requireControlled(params);
-      if (!api.debugger) return await evaluateInMainWorld(id, params.expression);
+      // Firefox has no debugger API, and add-on policy forbids running code from outside the add-on.
+      if (!api.debugger) throw new Error('evaluate is not available in Firefox. Use snapshot, get_text, click and type.');
       const r = await withDebugger(id, (send) => send('Runtime.evaluate', {
         expression: params.expression, returnByValue: true, awaitPromise: true, userGesture: true,
       }));
@@ -540,29 +541,6 @@ async function handle(method, params) {
     default:
       throw new Error(`Unknown method ${method}`);
   }
-}
-
-// Firefox has no debugger API: run the expression in the page's own JS world instead.
-// Subject to the page's CSP, so pages that forbid eval reject it.
-async function evaluateInMainWorld(tabId, expression) {
-  const [res] = await api.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    args: [expression],
-    func: async (expr) => {
-      try {
-        const v = await (0, eval)(expr);
-        if (v === undefined) return { ok: true, value: '(undefined)' };
-        return { ok: true, value: JSON.parse(JSON.stringify(v) ?? 'null') };
-      } catch (e) {
-        return { ok: false, error: String(e?.message || e) };
-      }
-    },
-  });
-  const r = res?.result;
-  if (!r) throw new Error(res?.error?.message || 'No result from page (it may have navigated).');
-  if (!r.ok) throw new Error(r.error);
-  return r.value;
 }
 
 // Firefox only: build the files and drag events in the page's world so the page can read them.

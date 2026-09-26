@@ -268,9 +268,8 @@ func register(s *mcp.Server, h *hub.Hub) {
 		})
 
 	forward(s, h, "evaluate",
-		"Run a JavaScript expression in the page and return the JSON result. In Chromium this uses the debugger API "+
-			`(the browser shows a "being debugged" bar while attached); in Firefox it runs in the page's own context and `+
-			"fails on pages whose CSP forbids eval. Prefer snapshot/click/type when possible.",
+		"Run a JavaScript expression in the page and return the JSON result. Chromium only: it uses the debugger API "+
+			`(the browser shows a "being debugged" bar while attached). Prefer snapshot/click/type when possible.`,
 		fixed[evaluateIn](d30))
 
 	forward(s, h, "wait_for_user",

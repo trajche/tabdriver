@@ -1,0 +1,42 @@
+name: Release
+
+# Push a tag like v0.3.0. The tag sets the version of the binaries and both extension manifests.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the GitHub release, and the Homebrew cask / Scoop manifest commits to main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make chrome EXT_VERSION="${GITHUB_REF_NAME#v}"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Submits the add-on to addons.mozilla.org (creates the listing the first time). Mozilla
+  # reviews it, then Firefox users get it from AMO. amo/metadata.json holds the listing text.
+  amo:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: make amo EXT_VERSION="${GITHUB_REF_NAME#v}"
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
