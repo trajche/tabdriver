@@ -76,8 +76,17 @@ Run `tabdriver` without arguments to print the config for other agents.
 
 `browser_status` `select_browser` `list_tabs` `open_tab` `close_tab` `navigate` `request_tab_access`
 `release_tab` `snapshot` `click` `type` `select_option` `press_key` `scroll` `wait_for` `get_text`
-`screenshot` (`path`, `annotate`) `console` `errors` `evaluate` `wait_for_user` `list_downloads`
-`wait_for_download` `upload_file` `dogfood_guide`
+`hover` `screenshot` (`path`, `annotate`) `console` `errors` `evaluate` `wait_for_user` `list_downloads`
+`wait_for_download` `upload_file` `record_start` `record_stop` `dogfood_guide`
+
+`snapshot` takes `selector` (part of the page) and `diff` (only what changed since the last one).
+
+## Storyboards
+
+`record_start` / `record_stop` record a flow as a storyboard: before every action, and after every
+page load, a screenshot shows a pointer with an icon for what happens where (click, type, choose,
+hover, scroll, key, file drop). You get `storyboard.html` (a numbered grid with captions),
+`storyboard.md`, `recording.gif` and the frames in `steps/`.
 
 ## Dogfood
 

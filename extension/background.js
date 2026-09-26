@@ -580,6 +580,7 @@ async function handle(method, params) {
     }
 
     case 'type':
+    case 'hover':
     case 'select_option':
     case 'press_key':
     case 'scroll':
@@ -602,10 +603,26 @@ async function handle(method, params) {
       await new Promise((r) => setTimeout(r, 300));
       const png = params.format === 'png';
       try {
-        const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, png ? { format: 'png' } : { format: 'jpeg', quality: 70 });
+        const dataUrl = await capture(tab.windowId, png ? { format: 'png' } : { format: 'jpeg', quality: 70 });
         return { mimeType: png ? 'image/png' : 'image/jpeg', data: dataUrl.split(',')[1], labels };
       } finally {
         if (params.annotate) await page(id, 'annotate', { on: false }).catch(() => {});
+      }
+    }
+
+    // A recording frame: the tab with a marker showing the next action (or the page that loaded).
+    case 'storyboard_frame': {
+      const id = requireControlled(params);
+      const tab = await api.tabs.get(id);
+      await api.tabs.update(id, { active: true });
+      await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
+      const info = await page(id, 'markAction', params.mark);
+      await new Promise((r) => setTimeout(r, 150));
+      try {
+        const dataUrl = await capture(tab.windowId, { format: 'jpeg', quality: 80 });
+        return { mimeType: 'image/jpeg', data: dataUrl.split(',')[1], ...info };
+      } finally {
+        await page(id, 'clearMark').catch(() => {});
       }
     }
 
@@ -671,6 +688,15 @@ async function handle(method, params) {
     default:
       throw new Error(`Unknown method ${method}`);
   }
+}
+
+// Chromium allows two captureVisibleTab calls per second; space them out.
+let lastCapture = 0;
+async function capture(windowId, options) {
+  const wait = lastCapture + 550 - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastCapture = Date.now();
+  return api.tabs.captureVisibleTab(windowId, options);
 }
 
 // ---------- page console and errors ----------

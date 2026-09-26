@@ -196,6 +196,17 @@ const shotPath = join(HOME, 'shots', 'annotated.png');
 const shot = await claude.callTool({ name: 'screenshot', arguments: { path: shotPath, annotate: true } });
 const note = shot.content.find(c => c.type === 'text')?.text || '';
 expect(existsSync(shotPath) && readFileSync(shotPath).subarray(1, 4).toString() === 'PNG' && /\d+ elements labelled/.test(note), `annotated PNG saved (${note.replace(/\n/g, '; ')})`);
+// Storyboard recording, hover, snapshot diff.
+const recDir = join(HOME, 'rec');
+await call(claude, 'record_start', { dir: recDir });
+await call(claude, 'hover', { ref: ref2(/"Break"/) });
+await call(claude, 'type', { ref: ref2(/Login name/), text: 'bob' });
+const diff = await call(claude, 'snapshot', { diff: true });
+expect(/Changes since the last snapshot/.test(diff) && /~ \[e\d+\] textbox "Login name" value="bob"/.test(diff), 'snapshot diff shows the typed value');
+const stopped = await call(claude, 'record_stop');
+const frames = existsSync(join(recDir, 'steps')) ? readdirSync(join(recDir, 'steps')) : [];
+expect(/Recorded 4 steps/.test(stopped) && frames.join() === '01-page.jpg,02-hover.jpg,03-type.jpg,04-page.jpg' &&
+  existsSync(join(recDir, 'storyboard.html')) && existsSync(join(recDir, 'recording.gif')), `storyboard recorded (${frames.join(' ')})`);
 const prompts = await claude.listPrompts();
 const dog = await claude.getPrompt({ name: 'dogfood', arguments: { url: 'https://app.example.com' } });
 expect(prompts.prompts.some(p => p.name === 'dogfood') && /dogfood-output\/app-example-com-/.test(dog.messages[0].content.text), 'dogfood prompt');

@@ -71,7 +71,7 @@ func dogfoodGuide(target, focus, outDir string) string {
 
 const dogfoodTemplate = `# Dogfood {URL}
 
-Explore {URL} the way a real user would, find what's broken or confusing, and write a report where every issue comes with evidence someone else can follow. Focus: {FOCUS}. Output: {OUT}/ (report.md and screenshots/).
+Explore {URL} the way a real user would, find what's broken or confusing, and write a report where every issue comes with evidence someone else can follow. Focus: {FOCUS}. Output: {OUT}/ (report.md, screenshots/, and a storyboard folder per interactive issue).
 
 You are working in the user's own browser, with their logins, while they may be watching. So:
 - Don't do anything with real consequences: no payments, transfers, purchases, deleting real data, sending messages or invitations to real people, or changing account settings. When a flow needs one of these, stop at the confirmation step and note it.
@@ -85,11 +85,11 @@ Create {OUT}/screenshots/ and write {OUT}/report.md from the template at the end
 snapshot, then screenshot with annotate=true and path={OUT}/screenshots/00-start.png. Map the main navigation and decide the order of sections (most important first). Check errors.
 
 ## 3. Explore, and document as you go
-Visit each section. On every page: snapshot, look at the page (screenshot), and call errors. Try what a user would try: buttons, forms, menus, dialogs, search, filters, sorting, pagination, empty and error states, long or odd input, going back and forward, reloading mid-flow. Walk real end-to-end tasks.
+Visit each section. On every page: snapshot, look at the page (screenshot), and call errors. After small interactions, snapshot with diff=true shows just what changed. Try what a user would try: buttons, forms, menus, dialogs, search, filters, sorting, pagination, empty and error states, long or odd input, going back and forward, reloading mid-flow. Walk real end-to-end tasks.
 
 When something is wrong, stop and document it before exploring further:
 1. Reproduce it once more, so you know it's real.
-2. Interactive issue: screenshot each step to {OUT}/screenshots/issue-NNN-step-K.png (before the action, then after), and the broken state to issue-NNN-result.png with annotate=true.
+2. Interactive issue: record_start with dir={OUT}/issue-NNN, walk through the steps again from the start, then record_stop. That saves a storyboard (a frame per action showing what was clicked, typed or scrolled where, plus each page load) and recording.gif. Then screenshot the broken state to {OUT}/screenshots/issue-NNN-result.png with annotate=true.
 3. Visible-on-load issue (typo, overlap, clipped text, broken image): one annotated screenshot, issue-NNN.png.
 4. Copy relevant lines from errors or console into the issue.
 5. Append the issue to report.md right away, numbered ISSUE-001, ISSUE-002, ...
@@ -135,8 +135,9 @@ Not covered: ...
 - **What happens:** ...
 - **Expected:** ...
 - **Steps to reproduce:**
-  1. ... ![](screenshots/issue-001-step-1.png)
-  2. ... ![](screenshots/issue-001-step-2.png)
+  1. ...
+  2. ...
+- **Storyboard:** [issue-001/storyboard.html](issue-001/storyboard.html) ![](issue-001/recording.gif)
 - **Result:** ![](screenshots/issue-001-result.png)
 - **Errors:** <lines from errors/console, or none>
 ` + "```\n"

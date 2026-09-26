@@ -167,20 +167,48 @@
     }
   }
 
-  function snapshot({ maxTextChars = 6000, includeText = true } = {}) {
+  let lastSnapshot = null; // ref -> line, from the previous full-page snapshot on this page
+
+  // `selector` limits it to part of the page; `diff` reports only what changed since the last
+  // snapshot of this page (elements added, removed or changed), which is much shorter on busy apps.
+  function snapshot({ maxTextChars = 6000, includeText = true, selector, diff = false } = {}) {
+    const scope = selector ? document.querySelector(selector) : document.documentElement;
+    if (!scope) throw new Error(`No element matches ${selector}`);
     const lines = [];
     const MAX = 1500;
     let skipped = 0;
-    for (const el of walk(document.documentElement)) {
+    for (const el of scope === document.documentElement ? walk(scope) : [scope, ...walk(scope)]) {
       const role = isInteractive(el);
       if (!role) continue;
       if (!isVisible(el)) continue;
       if (lines.length >= MAX) { skipped++; continue; }
       lines.push(describe(el, role));
     }
+    const byRef = new Map(lines.map((l) => [l.slice(1, l.indexOf(']')), l]));
+    const previous = lastSnapshot;
+    if (!selector) lastSnapshot = byRef;
+    if (diff && previous && !selector) {
+      const added = [], changed = [], removed = [];
+      for (const [ref, line] of byRef) {
+        if (!previous.has(ref)) added.push(`+ ${line}`);
+        else if (previous.get(ref) !== line) changed.push(`~ ${line}`);
+      }
+      for (const [ref, line] of previous) if (!byRef.has(ref)) removed.push(`- ${line}`);
+      const all = [...added, ...changed, ...removed];
+      return [
+        `URL: ${location.href}`,
+        `Title: ${document.title}`,
+        '',
+        all.length
+          ? `Changes since the last snapshot (${added.length} added, ${changed.length} changed, ${removed.length} removed; refs of unchanged elements still work):`
+          : 'No changes to interactive elements since the last snapshot.',
+        ...all,
+      ].join('\n');
+    }
     const out = [
       `URL: ${location.href}`,
       `Title: ${document.title}`,
+      ...(selector ? [`Scope: ${selector}`] : []),
       `Scroll: ${Math.round(scrollY)}/${Math.max(0, document.documentElement.scrollHeight - innerHeight)}px`,
       '',
       `Interactive elements (${lines.length}${skipped ? `, ${skipped} more omitted` : ''}):`,
@@ -236,6 +264,19 @@
           border: 2px solid #d97757; opacity: 0; }
         .pointer.press .ring { animation: ring .3s ease-out; }
         @keyframes ring { from { transform: scale(.3); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
+        .mark { position: fixed; left: 0; top: 0; }
+        .mark .arrow { position: absolute; left: -4px; top: -2px; width: 28px; height: 28px;
+          filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+        .mark .arrow path { fill: #d97757; stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
+        .mark i { position: absolute; left: 18px; top: 20px; width: 26px; height: 26px; border-radius: 50%;
+          background: #1f1d2b; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+        .mark i svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .mark b { position: absolute; left: 48px; top: 22px; background: #1f1d2b; color: #fff; font-size: 12px;
+          font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+        .mark.flip b { left: auto; right: 4px; top: 50px; }
+        .mark.banner { left: 50%; top: 14px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; }
+        .mark.banner i, .mark.banner b { position: static; }
+        .mark-box { position: fixed; border: 2px dashed #d97757; border-radius: 5px; }
         .anno { position: fixed; border: 1.5px solid #d97757; background: rgba(217,119,87,.06); border-radius: 3px; }
         .anno span { position: absolute; left: -1.5px; bottom: 100%; background: #d97757; color: #fff; font-size: 10px;
           font-weight: 700; line-height: 1; padding: 2px 3px; border-radius: 3px 3px 0 0; }
@@ -406,6 +447,79 @@
     return `<${hit.tagName.toLowerCase()}${id}${cls}>`;
   }
 
+  // ---------- storyboard markers ----------
+  // For recordings: a still pointer where the next action happens, with an icon for the kind of
+  // action and a caption. The live pointer, pill and highlights are hidden while it's shown.
+  const ICONS = { // Lucide (ISC)
+    click: '<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>',
+    type: '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>',
+    down: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+    up: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+    hover: '<path d="M22 14a8 8 0 0 1-8 8"/><path d="M18 11v-1a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1"/><path d="M10 9.5V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v10"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
+    select: '<path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>',
+    drop: '<path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+    page: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+    key: '<path d="M20 4v7a4 4 0 0 1-4 4H4"/><path d="m9 10-5 5 5 5"/>',
+  };
+
+  // { kind: click|type|select|hover|scroll|key|drop|page, ref?, selector?, text?, value?, key?, direction?, pixels?, files? }
+  function markAction(a) {
+    const { root, pill, pointer: live } = getUi();
+    clearMark();
+    pill.style.visibility = live.style.visibility = 'hidden';
+    root.querySelectorAll('.hl').forEach((n) => (n.style.visibility = 'hidden'));
+    const el = a.ref ? resolve(a.ref) : a.selector ? document.querySelector(a.selector) : null;
+    if (el) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    const name = el ? accessibleName(el) || el.tagName.toLowerCase() : '';
+    const q = (t, n = 40) => `"${clean(String(t ?? ''), n)}"`;
+    const down = a.direction !== 'up' && a.direction !== 'top';
+    const caption = {
+      click: `Click ${q(name)}`,
+      type: `Type ${q(a.text)}${name ? ` into ${q(name, 30)}` : ''}`,
+      select: `Choose ${q(a.value)}${name ? ` in ${q(name, 30)}` : ''}`,
+      hover: `Hover ${q(name)}`,
+      scroll: el ? `Scroll to ${q(name)}` : `Scroll ${a.direction || 'down'}${a.pixels ? ` ${a.pixels}px` : ''}`,
+      key: `Press ${a.key}${name ? ` in ${q(name, 30)}` : ''}`,
+      drop: `Drop ${a.files || 'files'}${name ? ` onto ${q(name, 30)}` : ''}`,
+      page: `Page: ${clean(document.title || location.href, 70)}`,
+    }[a.kind] || a.kind;
+    const icon = a.kind === 'scroll' ? (down ? ICONS.down : ICONS.up) : ICONS[a.kind] || ICONS.click;
+
+    const mark = document.createElement('div');
+    mark.className = 'mark';
+    if (a.kind === 'page') {
+      mark.classList.add('banner');
+      mark.innerHTML = `<i><svg viewBox="0 0 24 24">${icon}</svg></i><b></b>`;
+      mark.querySelector('b').textContent = caption;
+    } else {
+      const focus = el || (a.kind === 'key' && document.activeElement !== document.body ? document.activeElement : null);
+      let x = innerWidth / 2, y = innerHeight / 2;
+      if (focus) {
+        const r = rectOf(focus);
+        ({ x, y } = centerOf(focus));
+        const box = document.createElement('div');
+        box.className = 'mark-box';
+        box.style.cssText = `left:${r.left - 3}px;top:${r.top - 3}px;width:${r.width + 6}px;height:${r.height + 6}px;`;
+        root.appendChild(box);
+      }
+      mark.style.transform = `translate(${x}px, ${y}px)`;
+      mark.innerHTML = `<svg class="arrow" viewBox="0 0 24 24"><path d="M4 2v17l4.5-4.5 3 6.5 2.6-1.1-3-6.4H17.5z"/></svg>` +
+        `<i><svg viewBox="0 0 24 24">${icon}</svg></i><b></b>`;
+      mark.querySelector('b').textContent = caption;
+      if (x > innerWidth - 260) mark.classList.add('flip'); // keep the caption on screen
+    }
+    root.appendChild(mark);
+    return { caption, url: location.href, title: document.title };
+  }
+
+  function clearMark() {
+    if (!ui) return true;
+    ui.root.querySelectorAll('.mark, .mark-box').forEach((n) => n.remove());
+    ui.pill.style.visibility = ui.pointer.style.visibility = '';
+    ui.root.querySelectorAll('.hl').forEach((n) => (n.style.visibility = ''));
+    return true;
+  }
+
   // Label every visible interactive element in the viewport with its snapshot ref, for screenshots.
   function annotate({ on }) {
     const { root, pill } = getUi();
@@ -455,6 +569,20 @@
     el.click();
     return `Clicked ${describe(el, isInteractive(el) || el.tagName.toLowerCase())}` +
       (covered ? `\nNote: ${covered} covers this element, so a real click would hit that instead.` : '');
+  }
+
+  async function hover({ ref }) {
+    const el = resolve(ref);
+    await prepare(el, 'hover');
+    const { x, y } = centerOf(el);
+    const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, view: window };
+    el.dispatchEvent(new PointerEvent('pointerover', opts));
+    el.dispatchEvent(new PointerEvent('pointerenter', { ...opts, bubbles: false }));
+    el.dispatchEvent(new MouseEvent('mouseover', opts));
+    el.dispatchEvent(new MouseEvent('mouseenter', { ...opts, bubbles: false }));
+    el.dispatchEvent(new PointerEvent('pointermove', opts));
+    el.dispatchEvent(new MouseEvent('mousemove', opts));
+    return `Hovering ${describe(el, isInteractive(el) || el.tagName.toLowerCase())}`;
   }
 
   async function pointFor({ ref }) {
@@ -606,8 +734,9 @@
   }
 
   const methods = {
-    snapshot, click, pointFor, type, select_option: selectOption, press_key: pressKey, scroll,
+    snapshot, click, hover, pointFor, type, select_option: selectOption, press_key: pressKey, scroll,
     wait_for: waitFor, get_text: getText, upload_file: uploadFiles, setControlled, showPrompt, hidePrompt, annotate,
+    markAction, clearMark,
   };
 
   window.__tabdriver = {

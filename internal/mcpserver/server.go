@@ -63,13 +63,19 @@ type (
 	}
 	snapshotIn struct {
 		tabArg
-		MaxTextChars *int  `json:"maxTextChars,omitempty" jsonschema:"Cap on page text length (default 6000)."`
-		IncludeText  *bool `json:"includeText,omitempty" jsonschema:"Include page text (default true)."`
+		MaxTextChars *int    `json:"maxTextChars,omitempty" jsonschema:"Cap on page text length (default 6000)."`
+		IncludeText  *bool   `json:"includeText,omitempty" jsonschema:"Include page text (default true)."`
+		Selector     *string `json:"selector,omitempty" jsonschema:"Only this part of the page (CSS selector), e.g. a dialog or a table."`
+		Diff         *bool   `json:"diff,omitempty" jsonschema:"Only elements added, changed or removed since the previous snapshot of this page; refs of the rest stay valid. Much shorter after small interactions."`
 	}
 	clickIn struct {
 		tabArg
 		Ref     string `json:"ref" jsonschema:"Element ref from the latest snapshot, e.g. e12."`
 		Trusted *bool  `json:"trusted,omitempty" jsonschema:"Dispatch a real mouse event via the debugger (use if a normal click does nothing). Chromium only."`
+	}
+	hoverIn struct {
+		tabArg
+		Ref string `json:"ref" jsonschema:"Element ref from the latest snapshot, e.g. e12."`
 	}
 	typeIn struct {
 		tabArg
@@ -163,10 +169,12 @@ func text(s string) *mcp.CallToolResult {
 func forward[In any](s *mcp.Server, h *hub.Hub, name, desc string, timeout func(In) time.Duration) {
 	mcp.AddTool(s, &mcp.Tool{Name: name, Description: desc},
 		func(_ context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
+			rec.before(h, name, in)
 			data, err := h.Call(name, in, timeout(in))
 			if err != nil {
 				return nil, nil, err
 			}
+			rec.after(h, name, in, data)
 			return textResult(data), nil, nil
 		})
 }
@@ -250,6 +258,7 @@ func register(s *mcp.Server, h *hub.Hub) {
 		"Click an element by ref. Set trusted=true to dispatch a real mouse event via the debugger (use if a normal click does nothing; Chromium only).",
 		fixed[clickIn](d30))
 
+	forward(s, h, "hover", "Move the pointer over an element (opens hover menus and tooltips).", fixed[hoverIn](d30))
 	forward(s, h, "type", "Type text into an input/textarea/contenteditable by ref.", fixed[typeIn](d30))
 	forward(s, h, "select_option", "Choose an option in a <select> by value or visible label.", fixed[selectIn](d30))
 	forward(s, h, "press_key", "Press a key (Enter, Escape, Tab, ArrowDown, ...) on an element or the focused element.", fixed[keyIn](d30))
@@ -322,6 +331,7 @@ func register(s *mcp.Server, h *hub.Hub) {
 		fixed[errorsIn](d30))
 
 	addDogfood(s)
+	addRecording(s, h)
 
 	forward(s, h, "evaluate",
 		"Run a JavaScript expression in the page and return the JSON result. Chromium only: it uses the debugger API "+
@@ -350,6 +360,7 @@ func register(s *mcp.Server, h *hub.Hub) {
 			if err != nil {
 				return nil, nil, err
 			}
+			rec.before(h, "upload_file", in)
 			data, err := h.Call("upload_file", map[string]any{
 				"tabId": in.TabID, "ref": in.Ref, "selector": in.Selector, "files": files,
 			}, time.Minute)
