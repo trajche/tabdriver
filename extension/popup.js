@@ -29,6 +29,7 @@ async function render() {
   $('dot').className = `dot ${state.status}`;
   $('status').textContent = state.status === 'connected' ? 'ready' : missing ? 'app not found' : state.status;
   $('enabled').checked = state.enabled;
+  $('control').disabled = !state.enabled;
   $('pointer').checked = state.pointer;
   $('detail').textContent = state.status === 'connected' || missing ? '' : state.statusDetail;
 

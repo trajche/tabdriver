@@ -28,6 +28,7 @@ let promptSeq = 0;
 const chunks = new Map(); // cid -> { parts, total } for messages split by the host
 const pointerAt = new Map(); // tabId -> { x, y }: where the agent pointer last was, so it survives navigation
 let pointerEnabled = DEFAULTS.pointer;
+let enabled = DEFAULTS.enabled; // the popup's On switch
 
 const ready = (async () => {
   const s = await api.storage.session.get(['controlled', 'lastTabId']).catch(() => ({}));
@@ -78,6 +79,7 @@ function controlledBadges() {
 
 // The sidebar's tab menu (right-click) gets a toggle: take a tab for agents, or give it back.
 function tabMenu() {
+  if (!enabled) return []; // switched off: no AI items in the sidebar's menu
   const ids = [...controlled];
   return [
     { id: 'control', title: 'Let AI agents control this tab', exceptTabIds: ids },
@@ -111,7 +113,7 @@ api.runtime.onMessageExternal.addListener((msg, sender) => {
   if (msg?.type === 'arcsidebar:menu-clicked' && Number.isInteger(msg.tabId)) {
     ready.then(async () => {
       if (msg.id === 'release') return release(msg.tabId);
-      if (msg.id !== 'control') return;
+      if (msg.id !== 'control' || !enabled) return;
       const tab = await api.tabs.get(msg.tabId).catch(() => null);
       if (tab && /^(https?|file):/.test(tab.url || '')) await markControlled(tab.id);
     });
@@ -246,8 +248,19 @@ api.alarms.onAlarm.addListener(async (a) => {
   updateSidebarBadges();
   if ((await getSettings()).enabled && !port) connect();
 });
+// Switched off: agents are disconnected and every AI tab is given back (no pill, pointer,
+// sidebar badges or menu items), and recordings stop.
+async function switchOff() {
+  disconnect();
+  setStatus('disabled');
+  await ready;
+  for (const id of [...controlled]) await release(id).catch(() => forgetTab(id));
+  updateSidebarBadges();
+}
+
 getSettings().then((s) => {
   pointerEnabled = s.pointer;
+  enabled = s.enabled;
   if (s.enabled) connect();
   else setStatus('disabled');
 });
@@ -339,6 +352,8 @@ async function ensureAgent(tabId) {
     target: { tabId }, func: () => !!window.__tabdriver,
   }).catch((e) => { throw new Error(`Cannot access tab ${tabId}: ${e.message}`); });
   if (!probe?.result) {
+    await api.scripting.insertCSS({ target: { tabId }, css: 'tabdriver-ui[data-tabdriver-ui] { display: block !important; }' })
+      .catch(() => {});
     await api.scripting.executeScript({ target: { tabId }, files: ['page-agent.js'] });
     // A new page: show the pill and pointer before the agent's first action on it.
     if (controlled.has(tabId)) {
@@ -373,6 +388,7 @@ async function markControlled(tabId, agent) {
 
 async function release(tabId) {
   forgetTab(tabId);
+  await stopHar(tabId);
   await detachDebugger(tabId);
   await page(tabId, 'setControlled', { on: false }).catch(() => {});
 }
@@ -465,10 +481,11 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true;
       case 'set-enabled':
         await api.storage.local.set({ enabled: msg.enabled });
-        if (msg.enabled) connect();
-        else { disconnect(); setStatus('disabled'); }
+        enabled = !!msg.enabled;
+        if (enabled) { connect(); updateSidebarBadges(); } else await switchOff();
         return true;
       case 'control-active-tab': {
+        if (!enabled) throw new Error('Tab Driver is off. Turn it on first.');
         const t = await activeTab();
         await markControlled(t.id);
         return tabSummary(t);

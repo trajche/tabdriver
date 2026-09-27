@@ -228,7 +228,9 @@
     if (ui?.host.isConnected) return ui;
     const host = document.createElement('tabdriver-ui');
     host.setAttribute('data-tabdriver-ui', '');
-    host.style.cssText = 'all:initial;position:fixed;inset:0;pointer-events:none;z-index:2147483647;';
+    // Hidden unless the extension's stylesheet shows it: browsers drop that stylesheet when the
+    // extension is disabled or removed, and Firefox freezes this script, so the UI can't be left behind.
+    host.style.cssText = 'all:initial;display:none;position:fixed;inset:0;pointer-events:none;z-index:2147483647;';
     const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `
       <style>
@@ -291,11 +293,30 @@
     const pill = root.querySelector('.pill');
     pill.querySelector('.stop').addEventListener('click', () => api.runtime.sendMessage({ type: 'release-tab' }));
     ui = { host, root, pill, card: root.querySelector('.card'), pointer: root.querySelector('.pointer') };
+    // If the extension is disabled or removed, this script is orphaned: take our UI off the page.
+    ui.alive = setInterval(() => {
+      let ok;
+      try { ok = !!api.runtime?.id; } catch { ok = false; }
+      if (!ok) removeUi();
+    }, 2000);
     return ui;
+  }
+
+  function removeUi() {
+    if (!ui) return;
+    clearInterval(ui.alive);
+    ui.host.remove();
+    ui = null;
   }
 
   // `pointer`: { enabled, x, y } from the background; x/y is where the pointer was on the previous page.
   function setControlled({ on, agent, pointer: cfg }) {
+    if (!on) { // given back: take everything off the page
+      removeUi();
+      pointer.enabled = false;
+      pointer.x = pointer.y = null;
+      return true;
+    }
     const { pill, pointer: el } = getUi();
     pill.hidden = !on;
     pill.querySelector('.label').textContent = agent ? `${agent} is controlling this tab` : 'AI agents may control this tab';

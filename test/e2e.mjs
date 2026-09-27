@@ -241,6 +241,17 @@ await call(codex, 'upload_file', { selector: '#fi', paths: [BIG] });
 await call(codex, 'wait_for', { text: 'file:big.bin:1500000' });
 console.log('claude default tab ->', /Applied|Submitted/.test(await call(claude, 'get_text', {})) ? 'own tab ✓' : 'WRONG TAB');
 
+// Switching Tab Driver off gives every AI tab back and disconnects agents (Chromium: the
+// test can reach the service worker; the Firefox side is covered by manual testing).
+if (!FIREFOX) {
+  await browser.inspect('(async () => { await chrome.storage.local.set({ enabled: false }); enabled = false; await switchOff(); })()');
+  const off = await browser.inspect('[controlled.size, status, JSON.stringify(tabMenu())]');
+  expect(off[0] === 0 && off[1] === 'disabled' && off[2] === '[]', `switched off: ${JSON.stringify(off)}`);
+  await call(claude, 'list_tabs', {}, true);
+  await browser.inspect('(async () => { await chrome.storage.local.set({ enabled: true }); enabled = true; connect(); })()');
+  await new Promise(r => setTimeout(r, 1500));
+  await call(claude, 'list_tabs');
+}
 await codex.close();
 await sleep(500);
 console.log('after codex exits, extension sees:', JSON.stringify(await browser.inspect('agents')));
