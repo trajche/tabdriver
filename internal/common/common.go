@@ -4,6 +4,7 @@ package common
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 )
@@ -26,11 +27,22 @@ func BaseDir() string {
 	if d := os.Getenv("TABDRIVER_HOME"); d != "" {
 		return d
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
+	home := HomeDir()
+	if home == "" {
 		home = os.TempDir()
 	}
 	return filepath.Join(home, ".tabdriver")
+}
+
+// HomeDir is the user's real home directory, from the user database rather than $HOME.
+// Homebrew runs cask install steps with HOME pointing into its sandbox, but browsers read
+// their host registrations from the real home.
+func HomeDir() string {
+	if u, err := user.Current(); err == nil && u.HomeDir != "" {
+		return u.HomeDir
+	}
+	home, _ := os.UserHomeDir()
+	return home
 }
 
 // HostsDir holds one Unix socket per running native host (one per browser).

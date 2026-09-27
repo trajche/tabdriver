@@ -57,17 +57,30 @@ homebrew_casks:
     description: Let AI agents drive your real browser, with your logins, while you watch
     license: MIT
     binaries: [tabdriver]
-    hooks:
-      post:
-        # Unsigned binary: drop the download quarantine, then register the browser host.
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tabdriver"]
-          end
+    # Homebrew 7 replaced postflight blocks with sandboxed install steps: HOME points into the
+    # sandbox (tabdriver finds the real home itself) and steps may only write where listed.
+    # Older Homebrew doesn't know install steps, so it gets the postflight blocks.
+    custom_block: |
+      if respond_to?(:postflight_steps)
+        postflight_steps do
+          run "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "tabdriver"], chdir: ".", must_succeed: false,
+                                print_stderr: false, writable_paths: ["tabdriver"], writable_base: :staged_path
+          run "bin/tabdriver", base: :homebrew_prefix, args: ["install"],
+                               writable_paths: ["Library/Application Support", ".tabdriver"], writable_base: :home
+        end
+        uninstall_preflight_steps do
+          run "tabdriver", base: :staged_path, args: ["uninstall"], must_succeed: false,
+                           writable_paths: ["Library/Application Support", ".tabdriver"], writable_base: :home
+        end
+      else
+        postflight do
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tabdriver"] if OS.mac?
           system_command "#{HOMEBREW_PREFIX}/bin/tabdriver", args: ["install"]
-      pre:
-        uninstall: |
+        end
+        uninstall_preflight do
           system_command "#{staged_path}/tabdriver", args: ["uninstall"], must_succeed: false
+        end
+      end
     caveats: |
       Registered with your browsers. Next: install the browser extension and add `tabdriver mcp`
       to your agent (run `tabdriver` for the exact lines). https://github.com/trajche/tabdriver

@@ -20,7 +20,7 @@ type browser struct {
 }
 
 func browsers() []browser {
-	home, _ := os.UserHomeDir()
+	home := common.HomeDir()
 	switch runtime.GOOS {
 	case "darwin":
 		as := filepath.Join(home, "Library", "Application Support")
