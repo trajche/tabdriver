@@ -33,9 +33,13 @@ const PAGE = `<!doctype html><title>Test Bank</title><h1>Transactions</h1>
 <input type="file" id="fi" onchange="fr.textContent='file:'+this.files[0].name+':'+this.files[0].size"><p id="fr"></p>
 <button onclick="console.warn('careful now');throw new Error('boom from Break')">Break</button>
 <img src="/missing.png" alt="">
+<button onclick="fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:'ann',password:'hunter2'})})
+ .then(()=>fetch('/api/invoices/42')).then(r=>r.json()).then(j=>{out.textContent='total '+j.total;return fetch('/api/missing')})">Load invoice</button>
 <div style="position:relative"><button>Under banner</button><div id="banner" style="position:absolute;inset:0;background:rgba(0,0,0,.1)"></div></div>`;
 const srv = http.createServer((req, res) => {
-  if (req.url === '/missing.png') { res.writeHead(404); return res.end(); }
+  if (req.url === '/missing.png' || req.url === '/api/missing') { res.writeHead(404); return res.end(); }
+  if (req.url === '/api/login') { res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'sid=s3cr3t' }); return res.end('{"access_token":"abc123","user":{"name":"Ann"}}'); }
+  if (req.url === '/api/invoices/42') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end('{"id":42,"total":99.5,"shipping":"DHL"}'); }
   if (req.url === '/tx.csv') { res.writeHead(200, { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="tx.csv"' }); return res.end('a,b\n1,2\n'); }
   res.writeHead(200, { 'content-type': 'text/html' }); res.end(PAGE);
 }).listen(8813);
@@ -207,6 +211,25 @@ const stopped = await call(claude, 'record_stop');
 const frames = existsSync(join(recDir, 'steps')) ? readdirSync(join(recDir, 'steps')) : [];
 expect(/Recorded 4 steps/.test(stopped) && frames.join() === '01-page.jpg,02-hover.jpg,03-type.jpg,04-page.jpg' &&
   existsSync(join(recDir, 'storyboard.html')) && existsSync(join(recDir, 'recording.gif')), `storyboard recorded (${frames.join(' ')})`);
+// Network log, one request in full, and a HAR with bodies.
+await call(claude, 'har_start');
+await call(claude, 'click', { ref: ref2(/Load invoice/) });
+await call(claude, 'wait_for', { text: 'total 99.5' });
+await new Promise(r => setTimeout(r, 800));
+const xhr = await call(claude, 'network', { types: 'xhr' });
+expect(/POST 200 xhr .*\/api\/login/.test(xhr) && /GET 200 xhr .*\/api\/invoices\/42/.test(xhr), 'network lists the API calls');
+const failed = await call(claude, 'network', { failedOnly: true, filter: '/api/' });
+expect(/404 .*\/api\/missing/.test(failed) && !/invoices/.test(failed), 'network failedOnly');
+const loginId = xhr.split('\n').find(l => l.includes('/api/login')).split(' ')[0];
+const login = await call(claude, 'network_request', { id: loginId });
+expect(/"password":"\[redacted\]"/.test(login) && /"access_token":"\[redacted\]"/.test(login) && /"user":"ann"/.test(login), 'network_request redacts secrets, keeps the rest');
+const loginRaw = await call(claude, 'network_request', { id: loginId, includeSecrets: true });
+expect(/hunter2/.test(loginRaw) && /abc123/.test(loginRaw), 'network_request includeSecrets');
+const harPath = join(HOME, 'net', 'session.har');
+const stoppedHar = await call(claude, 'har_stop', { path: harPath });
+const harJson = existsSync(harPath) ? JSON.parse(readFileSync(harPath, 'utf8')) : null;
+const inv = harJson?.log.entries.find(e => e.request.url.endsWith('/api/invoices/42'));
+expect(inv?.response.content.text?.includes('"shipping":"DHL"') && /GET 127\.0\.0\.1:8813\/api\/invoices\/:id/.test(stoppedHar), `HAR saved with bodies and endpoint summary (${harJson?.log.entries.length} entries)`);
 const prompts = await claude.listPrompts();
 const dog = await claude.getPrompt({ name: 'dogfood', arguments: { url: 'https://app.example.com' } });
 expect(prompts.prompts.some(p => p.name === 'dogfood') && /dogfood-output\/app-example-com-/.test(dog.messages[0].content.text), 'dogfood prompt');

@@ -77,7 +77,8 @@ Run `tabdriver` without arguments to print the config for other agents.
 `browser_status` `select_browser` `list_tabs` `open_tab` `close_tab` `navigate` `request_tab_access`
 `release_tab` `snapshot` `click` `type` `select_option` `press_key` `scroll` `wait_for` `get_text`
 `hover` `screenshot` (`path`, `annotate`) `console` `errors` `evaluate` `wait_for_user` `list_downloads`
-`wait_for_download` `upload_file` `record_start` `record_stop` `dogfood_guide`
+`wait_for_download` `upload_file` `record_start` `record_stop` `network` `network_request` `har_start`
+`har_stop` `dogfood_guide`
 
 `snapshot` takes `selector` (part of the page) and `diff` (only what changed since the last one).
 
@@ -95,6 +96,17 @@ problems, and writes a report with annotated screenshots and console errors for 
 In Claude Code, run `/mcp__tabdriver__dogfood https://app.example.com`; other agents: "dogfood
 app.example.com" (they call `dogfood_guide`). The report goes to `./dogfood-output/`. The agent hands
 you logins and 2FA, and doesn't pay, delete or send anything.
+
+## Network and HAR
+
+Controlled tabs keep a log of their last 500 requests. `network` lists them (`types: "xhr"` for the
+API calls a page makes), and `network_request` shows one in full: headers, request body and, while
+recording, the response body. `har_start` / `har_stop` save a HAR 1.2 file with request and response
+bodies, and list the API endpoints the page called (`GET api.example.com/invoices/:id ×3 [200]`),
+a starting point for scripting a web service. Chrome shows a "being debugged" bar while it records.
+
+Cookies, auth headers and password/token/card-like fields are redacted unless the agent passes
+`includeSecrets: true`. HAR files are written only to your disk, readable only by you.
 
 ## Security
 

@@ -332,6 +332,7 @@ func register(s *mcp.Server, h *hub.Hub) {
 
 	addDogfood(s)
 	addRecording(s, h)
+	addNetwork(s, h)
 
 	forward(s, h, "evaluate",
 		"Run a JavaScript expression in the page and return the JSON result. Chromium only: it uses the debugger API "+

@@ -10,13 +10,16 @@
     "alarms",
     "downloads",
     "nativeMessaging",
+    "webRequest",
+    "webRequestBlocking",
+    "webRequestFilterResponse",
     "cookies"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["background.js", "network.js"]
   },
   "icons": {
     "16": "icons/icon-16.png",

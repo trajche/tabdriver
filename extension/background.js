@@ -484,6 +484,8 @@ const debuggerTabs = new Map(); // tabId -> detach timer
 async function withDebugger(tabId, fn) {
   if (!api.debugger) throw new Error('trusted input needs the Chromium debugger API, which this browser (Firefox) lacks. Retry without trusted.');
   const target = { tabId };
+  // A HAR recording keeps the debugger attached; use its connection as it is.
+  if (hars.get(tabId)?.ownsDebugger) return fn((method, params) => api.debugger.sendCommand(target, method, params));
   if (!debuggerTabs.has(tabId)) {
     await api.debugger.attach(target, '1.3');
   }
@@ -502,6 +504,8 @@ async function detachDebugger(tabId) {
 api.debugger?.onDetach.addListener(({ tabId }) => {
   clearTimeout(debuggerTabs.get(tabId));
   debuggerTabs.delete(tabId);
+  const rec = hars.get(tabId); // the user dismissed Chrome's "being debugged" bar
+  if (rec) rec.ownsDebugger = false;
 });
 
 // ---------- command handlers ----------
@@ -625,6 +629,16 @@ async function handle(method, params) {
         await page(id, 'clearMark').catch(() => {});
       }
     }
+
+    case 'network':
+      return networkList(requireControlled(params), params);
+    case 'network_request':
+      requireControlled(params);
+      return networkRequest(params.id, params);
+    case 'har_start':
+      return await startHar(requireControlled(params), params);
+    case 'har_stop':
+      return await finishHar(requireControlled(params));
 
     case 'console':
     case 'errors': {
@@ -800,3 +814,6 @@ async function dropInMainWorld(tabId, { token, x, y, message }, files) {
 function downloadSummary(d) {
   return { id: d.id, filename: d.filename, url: d.finalUrl || d.url, state: d.state, bytes: d.fileSize, mime: d.mime, startTime: d.startTime };
 }
+
+// Network log and HAR recording (network.js). Firefox loads it from the manifest instead.
+if (typeof importScripts === 'function') importScripts('network.js');

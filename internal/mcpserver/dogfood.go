@@ -91,7 +91,7 @@ When something is wrong, stop and document it before exploring further:
 1. Reproduce it once more, so you know it's real.
 2. Interactive issue: record_start with dir={OUT}/issue-NNN, walk through the steps again from the start, then record_stop. That saves a storyboard (a frame per action showing what was clicked, typed or scrolled where, plus each page load) and recording.gif. Then screenshot the broken state to {OUT}/screenshots/issue-NNN-result.png with annotate=true.
 3. Visible-on-load issue (typo, overlap, clipped text, broken image): one annotated screenshot, issue-NNN.png.
-4. Copy relevant lines from errors or console into the issue.
+4. Copy relevant lines from errors or console into the issue. For a failed or wrong API call, network (failedOnly=true or types=xhr) finds it and network_request shows the request and response.
 5. Append the issue to report.md right away, numbered ISSUE-001, ISSUE-002, ...
 
 A click result may say another element covers the target. That means a real user's click would land on the cover (a banner or overlay): worth checking whether users can reach the control at all.

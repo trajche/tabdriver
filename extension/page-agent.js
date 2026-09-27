@@ -462,6 +462,15 @@
     key: '<path d="M20 4v7a4 4 0 0 1-4 4H4"/><path d="m9 10-5 5 5 5"/>',
   };
 
+  // Our own constant icon markup, parsed as SVG (no innerHTML).
+  function svg(markup) {
+    const doc = new DOMParser().parseFromString(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${markup}</svg>`, 'image/svg+xml');
+    return document.importNode(doc.documentElement, true);
+  }
+  const iconBubble = (markup) => { const i = document.createElement('i'); i.append(svg(markup)); return i; };
+  const captionEl = (text) => { const b = document.createElement('b'); b.textContent = text; return b; };
+
   // { kind: click|type|select|hover|scroll|key|drop|page, ref?, selector?, text?, value?, key?, direction?, pixels?, files? }
   function markAction(a) {
     const { root, pill, pointer: live } = getUi();
@@ -489,8 +498,7 @@
     mark.className = 'mark';
     if (a.kind === 'page') {
       mark.classList.add('banner');
-      mark.innerHTML = `<i><svg viewBox="0 0 24 24">${icon}</svg></i><b></b>`;
-      mark.querySelector('b').textContent = caption;
+      mark.append(iconBubble(icon), captionEl(caption));
     } else {
       const focus = el || (a.kind === 'key' && document.activeElement !== document.body ? document.activeElement : null);
       let x = innerWidth / 2, y = innerHeight / 2;
@@ -503,9 +511,9 @@
         root.appendChild(box);
       }
       mark.style.transform = `translate(${x}px, ${y}px)`;
-      mark.innerHTML = `<svg class="arrow" viewBox="0 0 24 24"><path d="M4 2v17l4.5-4.5 3 6.5 2.6-1.1-3-6.4H17.5z"/></svg>` +
-        `<i><svg viewBox="0 0 24 24">${icon}</svg></i><b></b>`;
-      mark.querySelector('b').textContent = caption;
+      const arrow = svg('<path d="M4 2v17l4.5-4.5 3 6.5 2.6-1.1-3-6.4H17.5z"/>');
+      arrow.setAttribute('class', 'arrow');
+      mark.append(arrow, iconBubble(icon), captionEl(caption));
       if (x > innerWidth - 260) mark.classList.add('flip'); // keep the caption on screen
     }
     root.appendChild(mark);

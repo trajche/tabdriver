@@ -20,7 +20,7 @@ snapshot: ## Local release build with GoReleaser (binaries, archives, cask, scoo
 	go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
 
 # Extension packages in build/. EXT_VERSION (set from the git tag in CI) overrides the manifest version.
-EXT_FILES := background.js page-agent.js popup.html popup.js app-setup.js setup.html setup.js icons
+EXT_FILES := background.js network.js page-agent.js popup.html popup.js app-setup.js setup.html setup.js icons
 EXT_VERSION ?=
 define package_ext # $(1) browser, $(2) source manifest
 	@rm -rf build/$(1) build/tabdriver-$(1).zip && mkdir -p build/$(1)
