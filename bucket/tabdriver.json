@@ -1,19 +1,19 @@
 {
-    "version": "0.3.0",
+    "version": "0.3.1",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/trajche/tabdriver/releases/download/v0.3.0/tabdriver_windows_amd64.zip",
+            "url": "https://github.com/trajche/tabdriver/releases/download/v0.3.1/tabdriver_windows_amd64.zip",
             "bin": [
                 "tabdriver.exe"
             ],
-            "hash": "2ced906a72672c85080b138fcb026c72b9a27af0842b59a4b8b008fd88e761dd"
+            "hash": "79661fdcc8a5c092ffed0d89b1d4e99f78897b02cb946f3317bc4893c051bf34"
         },
         "arm64": {
-            "url": "https://github.com/trajche/tabdriver/releases/download/v0.3.0/tabdriver_windows_arm64.zip",
+            "url": "https://github.com/trajche/tabdriver/releases/download/v0.3.1/tabdriver_windows_arm64.zip",
             "bin": [
                 "tabdriver.exe"
             ],
-            "hash": "7c344d71fb735effddf735f44d4350e206825381de3f69cbcef7f4d52783b097"
+            "hash": "c78dee1bc7c68d37d11155c39c82aff81c841ae64424eec1cec0b39b8e2d568e"
         }
     },
     "homepage": "https://github.com/trajche/tabdriver",
