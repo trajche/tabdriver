@@ -21,25 +21,25 @@ cask "tabdriver" do
     end
   end
 
-  version "0.3.1"
+  version "0.4.0"
 
   on_macos do
     on_arm do
-      sha256 "2c4c5716fd0f896aa7f82aa8dc28ab6214dfc9fc45b916dcd8dcf3e889052f8e"
+      sha256 "387398f90f26f579c2ca59a912abb9fc21ef18cd1f1732396ced5a2fe60f5297"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_darwin_arm64.tar.gz"
     end
     on_intel do
-      sha256 "83edcadbe080965c558f6568a3b112ec36dc17d23a9dd796b3ab028da77e6127"
+      sha256 "856ba05bcfd3e7aaf6b09a3fdead5c9a2ca2ffcea756965ac4593fd1c1fc5109"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_darwin_amd64.tar.gz"
     end
   end
   on_linux do
     on_arm do
-      sha256 "97bf07248ffb2911e763576c127ebe620d8863cd169eed2e7af20b87f37558aa"
+      sha256 "574dd9e645fe4d453b19adc529dd5376e91a84abb33ebad991946f7a61c177d1"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_linux_arm64.tar.gz"
     end
     on_intel do
-      sha256 "c7315f24defa9436b2dbd88cfa6bf039515f5d8777f1e0806861011996df9030"
+      sha256 "de3a7880707a3e9ca0e0e6035582e32777a9c2c56bea8e7924442606d652f78e"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_linux_amd64.tar.gz"
     end
   end
@@ -54,7 +54,7 @@ cask "tabdriver" do
 
   binary "tabdriver"
 
-  # No zap stanza required
+  zap :not_required
 
   caveats <<~EOS
     Registered with your browsers. Next: install the browser extension and add `tabdriver mcp`
