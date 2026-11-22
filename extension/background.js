@@ -5,7 +5,10 @@
 
 const api = globalThis.browser ?? globalThis.chrome;
 const HOST_NAME = 'com.tabdriver.host';
-const DEFAULTS = { enabled: true, pointer: true }; // pointer: show the agent's pointer in pages
+// pointer: show the agent's pointer in pages. background: never bring tabs or windows to the front.
+const DEFAULTS = { enabled: true, pointer: true, background: true };
+// Working in the background needs screenshots of tabs that aren't showing: Firefox only.
+const CAN_BACKGROUND = typeof api.tabs.captureTab === 'function';
 
 // ---------- state ----------
 let port = null;
@@ -26,15 +29,18 @@ let lastTabId = null;
 const prompts = new Map(); // promptId -> { tabId, kind, title, message, resolve, timer }
 let promptSeq = 0;
 const chunks = new Map(); // cid -> { parts, total } for messages split by the host
+const phones = new Map(); // tabId -> phone view of that tab (phone.js)
 const pointerAt = new Map(); // tabId -> { x, y }: where the agent pointer last was, so it survives navigation
 let pointerEnabled = DEFAULTS.pointer;
+let background = DEFAULTS.background;
 let enabled = DEFAULTS.enabled; // the popup's On switch
 
 const ready = (async () => {
-  const s = await api.storage.session.get(['controlled', 'lastTabId']).catch(() => ({}));
+  const s = await api.storage.session.get(['controlled', 'lastTabId', 'phones']).catch(() => ({}));
   const open = new Set((await api.tabs.query({})).map((t) => t.id));
   for (const id of s.controlled || []) if (open.has(id)) controlled.add(id);
   lastTabId = open.has(s.lastTabId) ? s.lastTabId : null;
+  for (const [id, p] of s.phones || []) if (open.has(id)) phones.set(id, p);
 })();
 ready.then(() => updateSidebarBadges());
 
@@ -44,7 +50,7 @@ function controlParams(tabId) {
 }
 
 function persist() {
-  api.storage.session.set({ controlled: [...controlled], lastTabId }).catch(() => {});
+  api.storage.session.set({ controlled: [...controlled], lastTabId, phones: [...phones] }).catch(() => {});
   updateBadges();
   updateSidebarBadges();
 }
@@ -67,14 +73,17 @@ function noteActivity(tabId) {
 
 function controlledBadges() {
   const now = Date.now();
-  return [...controlled].map((tabId) => ({
-    tabId,
-    label: 'AI',
-    icon: 'bot',
-    position: 'start',
-    pulse: now - (lastActive.get(tabId) || 0) < ACTIVE_MS,
-    title: `${tabAgent.get(tabId) || 'An AI agent'} is controlling this tab`,
-  }));
+  return [...controlled].map((tabId) => {
+    const waiting = [...prompts.values()].find((p) => p.tabId === tabId);
+    return {
+      tabId,
+      label: 'AI',
+      icon: 'bot',
+      position: 'start',
+      pulse: !!waiting || now - (lastActive.get(tabId) || 0) < ACTIVE_MS,
+      title: waiting?.title || `${tabAgent.get(tabId) || 'An AI agent'} is controlling this tab`,
+    };
+  });
 }
 
 // The sidebar's tab menu (right-click) gets a toggle: take a tab for agents, or give it back.
@@ -136,6 +145,11 @@ function notifyPopup() {
 }
 
 function updateBadges() {
+  if (prompts.size) { // an agent waits for the user, maybe in a tab that isn't showing
+    api.action.setBadgeBackgroundColor({ color: '#d97757' });
+    api.action.setBadgeText({ text: '!' });
+    return;
+  }
   const active = status === 'connected' && agents.length > 0;
   api.action.setBadgeBackgroundColor({ color: active ? '#2e7d32' : '#9e9e9e' });
   api.action.setBadgeText({ text: status === 'connected' ? (controlled.size ? String(controlled.size) : active ? '✓' : '') : status === 'error' || status === 'missing' ? '!' : '' });
@@ -260,6 +274,7 @@ async function switchOff() {
 
 getSettings().then((s) => {
   pointerEnabled = s.pointer;
+  background = s.background;
   enabled = s.enabled;
   if (s.enabled) connect();
   else setStatus('disabled');
@@ -301,11 +316,35 @@ function useTab(tabId, agent) {
   persist();
 }
 
-function tabSummary(t) {
+// Where a tab's page is: its top frame, or the phone frame in Firefox's phone view.
+function pageTarget(tabId) {
+  const phone = phones.get(tabId);
+  return phone?.mode === 'frame' && phone.frameId != null ? { tabId, frameIds: [phone.frameId] } : { tabId };
+}
+
+async function tabSummary(t) {
+  const phone = phones.get(t.id);
+  let { title, url } = t;
+  if (phone?.mode === 'frame') {
+    url = await phoneUrl(t.id);
+    title = await evalInFrame(t.id, () => document.title) ?? title;
+  }
   return {
-    tabId: t.id, windowId: t.windowId, title: t.title, url: t.url, active: t.active, controlled: controlled.has(t.id), status: t.status,
+    tabId: t.id, windowId: t.windowId, title, url, active: t.active, controlled: controlled.has(t.id), status: t.status,
     ...(t.hidden ? { hidden: true } : {}),
+    ...(phone ? { device: `${phone.spec.device} ${phone.spec.width}x${phone.spec.height}` } : {}),
   };
+}
+
+// Bring an agent's tab to the front, unless the user wants agents to stay in the background.
+async function showTab(tabId, windowId) {
+  if (CAN_BACKGROUND && background) return;
+  await focusTab(tabId, windowId);
+}
+
+async function focusTab(tabId, windowId) {
+  await api.tabs.update(tabId, { active: true });
+  await api.windows.update(windowId, { focused: true }).catch(() => {});
 }
 
 // Open agent tabs from the user's current tab, in its container (Firefox). Sidebar tab
@@ -314,7 +353,7 @@ function tabSummary(t) {
 // The window is picked explicitly: Firefox fails to create a tab when the last focused
 // window is not a normal browser window.
 async function newTabProps(params) {
-  const props = { url: params.url, active: params.active ?? true };
+  const props = { url: params.url, active: CAN_BACKGROUND && background ? false : params.active ?? true };
   const win = await api.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
   if (!win || win.incognito) return props;
   props.windowId = win.id;
@@ -327,6 +366,7 @@ async function newTabProps(params) {
 }
 
 function waitForLoad(tabId, timeoutMs = 30000) {
+  if (phones.get(tabId)?.mode === 'frame') return waitForFrameLoad(tabId, timeoutMs);
   return new Promise((resolve) => {
     let sawLoading = false;
     const done = () => { api.tabs.onUpdated.removeListener(listener); clearTimeout(t1); clearTimeout(t2); resolve(); };
@@ -349,25 +389,37 @@ function waitForLoad(tabId, timeoutMs = 30000) {
 
 async function ensureAgent(tabId) {
   const [probe] = await api.scripting.executeScript({
-    target: { tabId }, func: () => !!window.__tabdriver,
+    target: pageTarget(tabId), func: () => !!window.__tabdriver,
   }).catch((e) => { throw new Error(`Cannot access tab ${tabId}: ${e.message}`); });
   if (!probe?.result) {
-    await api.scripting.insertCSS({ target: { tabId }, css: 'tabdriver-ui[data-tabdriver-ui] { display: block !important; }' })
+    await api.scripting.insertCSS({ target: pageTarget(tabId), css: 'tabdriver-ui[data-tabdriver-ui] { display: block !important; }' })
       .catch(() => {});
-    await api.scripting.executeScript({ target: { tabId }, files: ['page-agent.js'] });
+    await api.scripting.executeScript({ target: pageTarget(tabId), files: ['page-agent.js'] });
     // A new page: show the pill and pointer before the agent's first action on it.
     if (controlled.has(tabId)) {
       await api.scripting.executeScript({
-        target: { tabId }, func: (p) => window.__tabdriver.run('setControlled', p), args: [controlParams(tabId)],
+        target: pageTarget(tabId), func: (p) => window.__tabdriver.run('setControlled', p), args: [controlParams(tabId)],
       }).catch(() => {});
     }
   }
 }
 
 async function page(tabId, method, params) {
+  if (phones.get(tabId)?.mode !== 'frame') return runInPage(tabId, method, params);
+  const started = Date.now();
+  const r = await orNavigated(tabId, runInPage(tabId, method, params));
+  if (r !== NAVIGATED) return r;
+  if (method === 'wait_for') { // keep waiting in the new page
+    const left = (params.timeoutMs ?? 15000) - (Date.now() - started);
+    if (left > 0) return page(tabId, method, { ...params, timeoutMs: left });
+  }
+  throw new Error('No result from page (it may have navigated). Take a new snapshot.');
+}
+
+async function runInPage(tabId, method, params) {
   await ensureAgent(tabId);
   const [res] = await api.scripting.executeScript({
-    target: { tabId },
+    target: pageTarget(tabId),
     func: (m, p) => window.__tabdriver.run(m, p),
     args: [method, params ?? {}],
   });
@@ -388,21 +440,26 @@ async function markControlled(tabId, agent) {
 
 async function release(tabId) {
   forgetTab(tabId);
+  await page(tabId, 'setControlled', { on: false }).catch(() => {});
+  await stopPhone(tabId).catch(() => {});
   await stopHar(tabId);
   await detachDebugger(tabId);
-  await page(tabId, 'setControlled', { on: false }).catch(() => {});
 }
 
 // Re-inject UI after navigations in controlled tabs; re-show pending prompts.
 api.tabs.onUpdated.addListener(async (tabId, info) => {
   if (info.status === 'loading' && controlled.has(tabId)) injectRecorder(tabId);
   if (info.status !== 'complete') return;
+  await pageLoaded(tabId);
+});
+
+async function pageLoaded(tabId) {
   await ready;
   if (controlled.has(tabId)) await page(tabId, 'setControlled', controlParams(tabId)).catch(() => {});
   for (const [id, p] of prompts) {
     if (p.tabId === tabId) page(tabId, 'showPrompt', { id, kind: p.kind, title: p.title, message: p.message }).catch(() => {});
   }
-});
+}
 
 function forgetTab(tabId) {
   controlled.delete(tabId);
@@ -416,6 +473,7 @@ function forgetTab(tabId) {
 
 api.tabs.onRemoved.addListener((tabId) => {
   forgetTab(tabId);
+  forgetPhone(tabId);
   debuggerTabs.delete(tabId);
   for (const [id, p] of prompts) if (p.tabId === tabId) finishPrompt(id, 'tab-closed');
 });
@@ -426,8 +484,15 @@ function finishPrompt(id, answer) {
   if (!p) return;
   prompts.delete(id);
   clearTimeout(p.timer);
+  promptsChanged();
   page(p.tabId, 'hidePrompt').catch(() => {});
   p.resolve(answer);
+}
+
+function promptsChanged() {
+  updateBadges();
+  updateSidebarBadges();
+  notifyPopup();
 }
 
 function askUser(tabId, { kind, title, message, timeoutMs }) {
@@ -435,7 +500,8 @@ function askUser(tabId, { kind, title, message, timeoutMs }) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => finishPrompt(id, 'timeout'), timeoutMs);
     prompts.set(id, { tabId, kind, title, message, resolve, timer });
-    api.tabs.update(tabId, { active: true }).catch(() => {});
+    promptsChanged();
+    if (!(CAN_BACKGROUND && background)) api.tabs.update(tabId, { active: true }).catch(() => {});
     page(tabId, 'showPrompt', { id, kind, title, message }).catch(async (e) => {
       // Loading pages get the prompt re-shown on completion; restricted pages never will.
       const t = await api.tabs.get(tabId).catch(() => null);
@@ -460,6 +526,18 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await api.storage.local.set({ pointer: pointerEnabled });
         for (const id of controlled) page(id, 'setControlled', controlParams(id)).catch(() => {});
         return true;
+      case 'set-background':
+        background = !!msg.enabled;
+        await api.storage.local.set({ background });
+        return true;
+      case 'show-tab': { // the user's own click in the popup
+        const t = await api.tabs.get(msg.tabId);
+        await focusTab(t.id, t.windowId);
+        return true;
+      }
+      case 'phone-start':
+      case 'phone-loaded':
+        return onPhoneMessage(msg, sender);
       case 'release-tab':
         if (tabId != null) await release(tabId);
         return true;
@@ -469,10 +547,13 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const tabs = await api.tabs.query({});
         return {
           status, statusDetail, agents, enabled: s.enabled, pointer: s.pointer, hostVersion,
+          background: CAN_BACKGROUND ? s.background : null, // null: this browser can't
+          waiting: [...prompts.values()].map(({ tabId, title, message }) => ({ tabId, title, message })),
           appOutdated: status === 'connected' && hostProtocol > 0 && hostProtocol < MIN_APP_PROTOCOL,
           extensionVersion: api.runtime.getManifest().version,
           os: (await api.runtime.getPlatformInfo()).os,
-          controlled: tabs.filter((t) => controlled.has(t.id)).map((t) => ({ ...tabSummary(t), agent: tabAgent.get(t.id) })),
+          controlled: await Promise.all(tabs.filter((t) => controlled.has(t.id))
+            .map(async (t) => ({ ...await tabSummary(t), agent: tabAgent.get(t.id) }))),
         };
       }
       // Popup / setup page: try the app again now instead of waiting for the next alarm.
@@ -488,7 +569,7 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!enabled) throw new Error('Tab Driver is off. Turn it on first.');
         const t = await activeTab();
         await markControlled(t.id);
-        return tabSummary(t);
+        return await tabSummary(t);
       }
       case 'release': await release(msg.tabId); return true;
     }
@@ -501,8 +582,8 @@ const debuggerTabs = new Map(); // tabId -> detach timer
 async function withDebugger(tabId, fn) {
   if (!api.debugger) throw new Error('trusted input needs the Chromium debugger API, which this browser (Firefox) lacks. Retry without trusted.');
   const target = { tabId };
-  // A HAR recording keeps the debugger attached; use its connection as it is.
-  if (hars.get(tabId)?.ownsDebugger) return fn((method, params) => api.debugger.sendCommand(target, method, params));
+  // A HAR recording or phone view keeps the debugger attached; use that connection as it is.
+  if (debuggerHeld(tabId)) return fn((method, params) => api.debugger.sendCommand(target, method, params));
   if (!debuggerTabs.has(tabId)) {
     await api.debugger.attach(target, '1.3');
   }
@@ -510,6 +591,25 @@ async function withDebugger(tabId, fn) {
   // Stay attached briefly so consecutive calls don't flicker the "debugging" bar.
   debuggerTabs.set(tabId, setTimeout(() => detachDebugger(tabId), 15000));
   return fn((method, params) => api.debugger.sendCommand(target, method, params));
+}
+
+// Features that keep the debugger attached until they end.
+function debuggerHeld(tabId) {
+  return !!(hars.get(tabId)?.ownsDebugger || phones.get(tabId)?.ownsDebugger);
+}
+
+async function holdDebugger(tabId) {
+  if (debuggerHeld(tabId)) return;
+  if (debuggerTabs.has(tabId)) { // attached for a trusted click or evaluate: take it over
+    clearTimeout(debuggerTabs.get(tabId));
+    debuggerTabs.delete(tabId);
+  } else {
+    await api.debugger.attach({ tabId }, '1.3');
+  }
+}
+
+async function dropDebugger(tabId) { // after the feature's own hold is gone
+  if (!debuggerHeld(tabId)) await api.debugger.detach({ tabId }).catch(() => {});
 }
 
 async function detachDebugger(tabId) {
@@ -523,6 +623,7 @@ api.debugger?.onDetach.addListener(({ tabId }) => {
   debuggerTabs.delete(tabId);
   const rec = hars.get(tabId); // the user dismissed Chrome's "being debugged" bar
   if (rec) rec.ownsDebugger = false;
+  forgetPhone(tabId); // emulation ends with the debugger
 });
 
 // ---------- command handlers ----------
@@ -530,7 +631,7 @@ async function handle(method, params) {
   switch (method) {
     case 'list_tabs': {
       const tabs = await api.tabs.query({});
-      return tabs.filter((t) => params.all || t.active || controlled.has(t.id)).map(tabSummary);
+      return Promise.all(tabs.filter((t) => params.all || t.active || controlled.has(t.id)).map(tabSummary));
     }
 
     case 'open_tab': {
@@ -547,7 +648,7 @@ async function handle(method, params) {
 
     case 'request_tab_access': {
       const tab = params.tabId != null ? await api.tabs.get(params.tabId) : await activeTab();
-      if (controlled.has(tab.id)) { useTab(tab.id, params._agent); return { granted: true, tab: tabSummary(tab) }; }
+      if (controlled.has(tab.id)) { useTab(tab.id, params._agent); return { granted: true, tab: await tabSummary(tab) }; }
       const answer = await askUser(tab.id, {
         kind: 'access',
         title: `${params._agent} wants to control this tab`,
@@ -556,7 +657,7 @@ async function handle(method, params) {
       });
       if (answer !== 'allow') return { granted: false, answer };
       await markControlled(tab.id, params._agent);
-      return { granted: true, tab: tabSummary(await api.tabs.get(tab.id)) };
+      return { granted: true, tab: await tabSummary(await api.tabs.get(tab.id)) };
     }
 
     case 'release_tab': {
@@ -574,14 +675,19 @@ async function handle(method, params) {
     case 'navigate': {
       const id = requireControlled(params);
       const loaded = waitForLoad(id);
-      if (params.url) await api.tabs.update(id, { url: params.url });
+      if (phones.get(id)?.mode === 'frame') await navigateFrame(id, params);
+      else if (params.url) await api.tabs.update(id, { url: params.url });
       else if (params.action === 'back') await api.tabs.goBack(id);
       else if (params.action === 'forward') await api.tabs.goForward(id);
       else if (params.action === 'reload') await api.tabs.reload(id);
       else throw new Error('Provide url or action');
-      await loaded;
+      const failed = await loaded;
+      if (failed) throw new Error(`The page did not load: ${failed}`);
       return tabSummary(await api.tabs.get(id));
     }
+
+    case 'emulate_device':
+      return await emulateDevice(requireControlled(params), params);
 
     case 'snapshot': {
       const id = requireControlled(params);
@@ -618,13 +724,12 @@ async function handle(method, params) {
     case 'screenshot': {
       const id = requireControlled(params);
       const tab = await api.tabs.get(id);
-      await api.tabs.update(id, { active: true });
-      await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
+      await showTab(id, tab.windowId);
       const labels = params.annotate ? await page(id, 'annotate', { on: true }) : 0;
       await new Promise((r) => setTimeout(r, 300));
       const png = params.format === 'png';
       try {
-        const dataUrl = await capture(tab.windowId, png ? { format: 'png' } : { format: 'jpeg', quality: 70 });
+        const dataUrl = await capture(tab, png ? { format: 'png' } : { format: 'jpeg', quality: 70 });
         return { mimeType: png ? 'image/png' : 'image/jpeg', data: dataUrl.split(',')[1], labels };
       } finally {
         if (params.annotate) await page(id, 'annotate', { on: false }).catch(() => {});
@@ -635,12 +740,11 @@ async function handle(method, params) {
     case 'storyboard_frame': {
       const id = requireControlled(params);
       const tab = await api.tabs.get(id);
-      await api.tabs.update(id, { active: true });
-      await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
+      await showTab(id, tab.windowId);
       const info = await page(id, 'markAction', params.mark);
       await new Promise((r) => setTimeout(r, 150));
       try {
-        const dataUrl = await capture(tab.windowId, { format: 'jpeg', quality: 80 });
+        const dataUrl = await capture(tab, { format: 'jpeg', quality: 80 });
         return { mimeType: 'image/jpeg', data: dataUrl.split(',')[1], ...info };
       } finally {
         await page(id, 'clearMark').catch(() => {});
@@ -694,7 +798,7 @@ async function handle(method, params) {
         timeoutMs: (params.timeoutSec ?? 600) * 1000,
       });
       const tab = await api.tabs.get(id).catch(() => null);
-      return { answer, tab: tab && tabSummary(tab) };
+      return { answer, tab: tab && await tabSummary(tab) };
     }
 
     case 'list_downloads': {
@@ -721,13 +825,21 @@ async function handle(method, params) {
   }
 }
 
-// Chromium allows two captureVisibleTab calls per second; space them out.
+// Firefox captures any tab, showing or not. Chromium captures the one in front, at most twice
+// per second, so space those out.
 let lastCapture = 0;
-async function capture(windowId, options) {
+async function capture(tab, options) {
+  const phone = phones.get(tab.id);
+  if (phone?.mode === 'debugger') { // the emulated screen, which can be taller than the window
+    const shot = await withDebugger(tab.id, (send) => send('Page.captureScreenshot', options));
+    return `data:image/${options.format};base64,${shot.data}`;
+  }
+  if (phone) return api.tabs.captureTab(tab.id, { ...options, rect: { x: 0, y: 0, width: phone.spec.width, height: phone.spec.height } });
+  if (CAN_BACKGROUND) return api.tabs.captureTab(tab.id, options);
   const wait = lastCapture + 550 - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCapture = Date.now();
-  return api.tabs.captureVisibleTab(windowId, options);
+  return api.tabs.captureVisibleTab(tab.windowId, options);
 }
 
 // ---------- page console and errors ----------
@@ -782,13 +894,13 @@ function installRecorder() {
 }
 
 function injectRecorder(tabId) {
-  return api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: installRecorder })
+  return api.scripting.executeScript({ target: pageTarget(tabId), world: 'MAIN', injectImmediately: true, func: installRecorder })
     .catch(() => {});
 }
 
 async function readPageLog(tabId, clear) {
   const [res] = await api.scripting.executeScript({
-    target: { tabId }, world: 'MAIN', args: [!!clear],
+    target: pageTarget(tabId), world: 'MAIN', args: [!!clear],
     func: (clear) => {
       const log = window[Symbol.for('tabdriver.log')];
       if (!log) return null;
@@ -803,7 +915,7 @@ async function readPageLog(tabId, clear) {
 // Firefox only: build the files and drag events in the page's world so the page can read them.
 async function dropInMainWorld(tabId, { token, x, y, message }, files) {
   const [res] = await api.scripting.executeScript({
-    target: { tabId },
+    target: pageTarget(tabId),
     world: 'MAIN',
     args: [token, x, y, files],
     func: (token, x, y, files) => {
@@ -832,5 +944,5 @@ function downloadSummary(d) {
   return { id: d.id, filename: d.filename, url: d.finalUrl || d.url, state: d.state, bytes: d.fileSize, mime: d.mime, startTime: d.startTime };
 }
 
-// Network log and HAR recording (network.js). Firefox loads it from the manifest instead.
-if (typeof importScripts === 'function') importScripts('network.js');
+// Network log and HAR recording (network.js), phone view (phone.js). Firefox loads them from the manifest instead.
+if (typeof importScripts === 'function') importScripts('network.js', 'phone.js');

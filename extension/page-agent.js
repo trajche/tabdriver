@@ -31,6 +31,8 @@
 
   // ---------- helpers ----------
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Pauses that only pace what the user sees. Hidden tabs round timers up to a second, so skip them there.
+  const pace = (ms) => (document.hidden ? Promise.resolve() : sleep(ms));
   const clean = (s, n = 80) => {
     s = (s || '').replace(/\s+/g, ' ').trim();
     return s.length > n ? s.slice(0, n - 1) + '…' : s;
@@ -391,7 +393,7 @@
     void el.offsetWidth; // restart the ripple
     el.classList.add('press');
     setTimeout(() => el.classList.remove('press'), 300);
-    await sleep(90);
+    await pace(90);
   }
 
   function highlight(el, label) {
@@ -575,12 +577,12 @@
   // Bring `el` into view, move the agent pointer onto it, and flag it. `press` shows a click.
   async function prepare(el, label, press = false) {
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-    await sleep(50);
+    await pace(50);
     const { x, y } = centerOf(el);
     await movePointer(x, y);
     highlight(el, label);
     if (press) await pressPointer();
-    await sleep(pointer.enabled ? 60 : 150);
+    await pace(pointer.enabled ? 60 : 150);
   }
 
   async function click({ ref }) {

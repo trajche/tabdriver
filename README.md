@@ -68,6 +68,10 @@ Run `tabdriver` without arguments to print the config for other agents.
   (switch it off in the popup).
 - `wait_for_user` hands the tab to you and waits for *Done*. Raise your agent's tool timeout for it
   (Claude Code `MCP_TOOL_TIMEOUT`, Codex `tool_timeout_sec`).
+- In Firefox, agents work in the background: their tabs open behind yours, and screenshots, clicks and
+  typing don't switch tabs or take focus. When one needs you, the toolbar button shows **!** and its
+  popup takes you to the tab. Turn off *Work in the background* in the popup to have tabs come to the
+  front. Other browsers bring the tab to the front for new tabs, screenshots and prompts.
 - Several agents can work at once, each in its own tabs.
 - With [Arcsidebar](https://github.com/trajche/arc) in Firefox, controlled tabs show a robot in the sidebar
   (blinking while the agent works), and right-clicking a tab lets agents take it or stops them.
@@ -78,9 +82,22 @@ Run `tabdriver` without arguments to print the config for other agents.
 `release_tab` `snapshot` `click` `type` `select_option` `press_key` `scroll` `wait_for` `get_text`
 `hover` `screenshot` (`path`, `annotate`) `console` `errors` `evaluate` `wait_for_user` `list_downloads`
 `wait_for_download` `upload_file` `record_start` `record_stop` `network` `network_request` `har_start`
-`har_stop` `dogfood_guide`
+`har_stop` `dogfood_guide` `emulate_device`
 
 `snapshot` takes `selector` (part of the page) and `diff` (only what changed since the last one).
+
+## Phone view
+
+`emulate_device` shows a tab as on a phone or tablet (`iphone`, `iphone-se`, `iphone-max`, `pixel`, `ipad`,
+or any `width` × `height`, `landscape`): viewport, touch and mobile user agent. The page reloads, logins are
+kept, and every other tool sees the mobile page until `device: "off"`.
+
+- Chromium uses the debugger's device emulation and shows the "being debugged" bar meanwhile.
+- Firefox gives extensions no access to its Responsive Design Mode, so the tab shows the site in a
+  phone-sized frame, which also works in the background. Sites that forbid framing are allowed in that tab
+  only: `X-Frame-Options` is dropped, and so is the Content-Security-Policy of hosts that use
+  `frame-ancestors` (the agent is told which). CSS `hover`/`pointer` queries still see a mouse, and a page
+  without a viewport meta tag isn't zoomed out.
 
 ## Storyboards
 

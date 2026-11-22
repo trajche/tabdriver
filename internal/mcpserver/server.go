@@ -36,7 +36,7 @@ type (
 	}
 	openTabIn struct {
 		URL    string `json:"url" jsonschema:"URL to open."`
-		Active *bool  `json:"active,omitempty" jsonschema:"Focus the new tab (default true) so the user can follow along."`
+		Active *bool  `json:"active,omitempty" jsonschema:"Focus the new tab (default true) so the user can follow along. Ignored in Firefox while the user has 'Work in the background' on (the default there): the tab opens behind."`
 	}
 	accessIn struct {
 		tabArg
@@ -46,6 +46,14 @@ type (
 		tabArg
 		URL    *string `json:"url,omitempty"`
 		Action *string `json:"action,omitempty" jsonschema:"One of: back, forward, reload."`
+	}
+	emulateIn struct {
+		tabArg
+		Device        *string `json:"device,omitempty" jsonschema:"iphone (default, 390x844), iphone-se (375x667), iphone-max (430x932), pixel (412x915), ipad (820x1180), or off to go back to the normal view."`
+		Width         *int    `json:"width,omitempty" jsonschema:"Viewport width in CSS px, instead of the device's."`
+		Height        *int    `json:"height,omitempty" jsonschema:"Viewport height in CSS px, instead of the device's."`
+		Landscape     *bool   `json:"landscape,omitempty" jsonschema:"Turn the device sideways."`
+		KeepUserAgent *bool   `json:"keepUserAgent,omitempty" jsonschema:"Keep the browser's own user agent, e.g. if the site logs you out when it changes."`
 	}
 	screenshotIn struct {
 		tabArg
@@ -238,7 +246,8 @@ func register(s *mcp.Server, h *hub.Hub) {
 
 	forward(s, h, "request_tab_access",
 		"Ask the user to let you control an existing tab (e.g. one where they are already logged in). "+
-			"Shows an Allow/Deny prompt inside that tab and waits for the answer. Omit tabId to target the currently active tab.",
+			"Shows an Allow/Deny prompt inside that tab and waits for the answer. Omit tabId to target the currently active tab. "+
+			"In Firefox a tab that isn't active may stay in the background, so first tell the user in chat which tab it is.",
 		fixed[accessIn](5*time.Minute))
 
 	forward(s, h, "release_tab", "Stop controlling a tab (it stays open).", fixed[tabArg](d30))
@@ -269,8 +278,15 @@ func register(s *mcp.Server, h *hub.Hub) {
 
 	forward(s, h, "get_text", "Get the full text content of an element (or the whole page) without truncation.", fixed[getTextIn](d30))
 
+	forward(s, h, "emulate_device",
+		"Show a controlled tab as on a phone or tablet (like the browser's responsive design mode): viewport size, touch, "+
+			"mobile user agent. The page reloads, logins are kept, and all other tools, screenshots included, see the mobile page "+
+			"until device=off. Take a new snapshot afterwards.",
+		fixed[emulateIn](90*time.Second))
+
 	mcp.AddTool(s, &mcp.Tool{Name: "screenshot",
-		Description: "Take a screenshot of the visible part of a controlled tab (the tab is brought to front). " +
+		Description: "Take a screenshot of the visible part of a controlled tab. In Firefox it works in the background, without " +
+			"taking focus (unless the user turned that off); other browsers bring the tab to front. " +
 			"Set path to save it as evidence, and annotate to label elements with their snapshot refs."},
 		func(_ context.Context, _ *mcp.CallToolRequest, in screenshotIn) (*mcp.CallToolResult, any, error) {
 			path := ""
@@ -341,7 +357,8 @@ func register(s *mcp.Server, h *hub.Hub) {
 
 	forward(s, h, "wait_for_user",
 		`Hand control to the user: shows a message banner in the tab (e.g. "Please complete 2FA login") `+
-			"and waits until they click Done. Use for logins, 2FA, CAPTCHAs, or confirming sensitive actions.",
+			"and waits until they click Done. Use for logins, 2FA, CAPTCHAs, or confirming sensitive actions. "+
+			"In Firefox the tab may stay in the background, so first tell the user in chat which tab needs them.",
 		func(in waitUserIn) time.Duration { return time.Duration(orInt(in.TimeoutSec, 600)+10) * time.Second })
 
 	forward(s, h, "list_downloads", "List recent downloads with filename, full path, state and source URL.", fixed[listDownloadsIn](d30))

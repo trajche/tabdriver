@@ -31,6 +31,8 @@ async function render() {
   $('enabled').checked = state.enabled;
   $('control').disabled = !state.enabled;
   $('pointer').checked = state.pointer;
+  $('background-option').hidden = state.background == null;
+  $('background').checked = !!state.background;
   $('detail').textContent = state.status === 'connected' || missing ? '' : state.statusDetail;
 
   $('setup').hidden = !missing;
@@ -42,6 +44,14 @@ async function render() {
     $('update').textContent = `The tabdriver app (${state.hostVersion}) is older than this extension ` +
       `(${state.extensionVersion}). Update it: ${updateHint(state.os)}.`;
   }
+
+  $('waiting-section').hidden = !state.waiting.length;
+  list($('waiting'), state.waiting.map((w) => {
+    const b = document.createElement('button');
+    b.textContent = 'Show';
+    b.onclick = async () => { await send({ type: 'show-tab', tabId: w.tabId }); window.close(); };
+    return item(w.title, w.message, b);
+  }), 'None');
 
   list($('agents'), state.agents.map((a) => item(a)),
     state.status === 'connected' ? 'None: start an agent with the tabdriver MCP server' : '—');
@@ -72,6 +82,8 @@ $('guide').onclick = () => {
 };
 
 $('pointer').onchange = (e) => send({ type: 'set-pointer', enabled: e.target.checked });
+
+$('background').onchange = (e) => send({ type: 'set-background', enabled: e.target.checked });
 
 $('enabled').onchange = async (e) => {
   await send({ type: 'set-enabled', enabled: e.target.checked });

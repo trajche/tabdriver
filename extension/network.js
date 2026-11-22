@@ -179,12 +179,7 @@ async function startHar(tabId, { includeSecrets }) {
       ['blocking']);
   } else {
     try {
-      if (debuggerTabs.has(tabId)) { // attached for a trusted click or evaluate: take it over
-        clearTimeout(debuggerTabs.get(tabId));
-        debuggerTabs.delete(tabId);
-      } else {
-        await api.debugger.attach({ tabId }, '1.3');
-      }
+      await holdDebugger(tabId);
       rec.ownsDebugger = true;
       await api.debugger.sendCommand({ tabId }, 'Network.enable', { maxPostDataSize: BODY_MAX });
     } catch (e) {
@@ -280,7 +275,7 @@ async function stopHar(tabId) {
   if (!rec) return null;
   hars.delete(tabId);
   if (rec.listener) api.webRequest.onBeforeRequest.removeListener(rec.listener);
-  if (rec.ownsDebugger) await api.debugger.detach({ tabId }).catch(() => {});
+  if (rec.ownsDebugger) await dropDebugger(tabId);
   lastHars.set(tabId, rec);
   return rec;
 }
