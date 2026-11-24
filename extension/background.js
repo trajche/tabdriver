@@ -67,8 +67,110 @@ let activeTimer = null;
 
 function noteActivity(tabId) {
   lastActive.set(tabId, Date.now());
+  if (currentVerb) setTabStatus(tabId, currentVerb);
   clearTimeout(activeTimer);
-  activeTimer = setTimeout(updateSidebarBadges, ACTIVE_MS + 100); // stop the blinking
+  activeTimer = setTimeout(() => { settleStatuses(); updateSidebarBadges(); }, ACTIVE_MS + 100); // stop the blinking
+}
+
+// ---------- what the agent is doing, in words ----------
+// Sidebars that take status lines (Arcsidebar) show one under the tab's title: the verb for the
+// command the agent is running now, or whatever the agent said with set_status. The line goes
+// quiet once the agent stops (same 5 s as the blinking badge) and says "Done" when it lets go.
+const tabStatus = new Map(); // tabId -> { text, busy, pinned }
+const DONE_MS = 8000; // how long "Done" stays after an agent gives a tab back
+const doneTimers = new Map(); // tabId -> timer that clears the finished line
+let currentVerb = null; // the command being handled, for the tab it turns out to be about
+
+// A verb per command, so the line reads like a person saying what they're up to.
+const VERBS = {
+  open_tab: 'Opening a tab',
+  request_tab_access: 'Asking for this tab',
+  navigate: 'Opening a page',
+  emulate_device: 'Changing the view',
+  snapshot: 'Reading the page',
+  get_text: 'Reading the page',
+  click: 'Clicking',
+  type: 'Typing',
+  hover: 'Hovering',
+  select_option: 'Choosing an option',
+  press_key: 'Pressing a key',
+  scroll: 'Scrolling',
+  wait_for: 'Waiting for the page',
+  upload_file: 'Uploading a file',
+  screenshot: 'Taking a screenshot',
+  storyboard_frame: 'Taking a screenshot',
+  evaluate: 'Running a script',
+  network: 'Checking network traffic',
+  network_request: 'Making a request',
+  har_start: 'Recording network traffic',
+  har_stop: 'Saving the network recording',
+  console: 'Reading the console',
+  errors: 'Reading page errors',
+  list_downloads: 'Checking downloads',
+  wait_for_download: 'Waiting for a download',
+  wait_for_user: 'Waiting for you',
+  close_tab: 'Closing the tab',
+};
+
+function verbFor(method, params) {
+  if (method === 'navigate') {
+    if (params?.action) return `Going ${params.action}`;
+    try {
+      return `Opening ${new URL(params.url).hostname.replace(/^www\./, '')}`;
+    } catch {
+      return VERBS.navigate;
+    }
+  }
+  return VERBS[method] || null;
+}
+
+/**
+ * Write the line for a tab. `pinned` is a line the agent wrote itself with set_status, which
+ * says what it is up to ("Checking backlinks") rather than which command is running: it stays
+ * until the agent replaces it or gives the tab back, and the per-command verbs step aside for
+ * it (they still keep it blinking, since the agent is plainly still working).
+ */
+function setTabStatus(tabId, text, { busy = true, pinned = false } = {}) {
+  const line = String(text || '').trim().slice(0, 64);
+  if (!line) return clearTabStatus(tabId);
+  const was = tabStatus.get(tabId);
+  if (was?.pinned && !pinned) {
+    if (was.busy === busy) return;
+    tabStatus.set(tabId, { ...was, busy });
+    updateSidebarBadges();
+    return;
+  }
+  clearTimeout(doneTimers.get(tabId));
+  doneTimers.delete(tabId);
+  if (was?.text === line && was.busy === busy && was.pinned === pinned) return;
+  tabStatus.set(tabId, { text: line, busy, pinned });
+  updateSidebarBadges();
+}
+
+function clearTabStatus(tabId) {
+  clearTimeout(doneTimers.get(tabId));
+  doneTimers.delete(tabId);
+  if (tabStatus.delete(tabId)) updateSidebarBadges();
+}
+
+/** The agent gave this tab back: say so, then let the line go. */
+function finishTabStatus(tabId) {
+  tabStatus.set(tabId, { text: 'Done', busy: false, pinned: false });
+  clearTimeout(doneTimers.get(tabId));
+  doneTimers.set(tabId, setTimeout(() => clearTabStatus(tabId), DONE_MS));
+  updateSidebarBadges();
+}
+
+/** Nothing has happened for a while: keep the words, stop the blinking. */
+function settleStatuses() {
+  const now = Date.now();
+  for (const [tabId, s] of tabStatus) {
+    if (s.busy && now - (lastActive.get(tabId) || 0) >= ACTIVE_MS) tabStatus.set(tabId, { ...s, busy: false });
+  }
+}
+
+function tabStatuses() {
+  return [...tabStatus].map(([tabId, s]) => ({ tabId, text: s.text, busy: s.busy }));
 }
 
 function controlledBadges() {
@@ -101,6 +203,7 @@ function updateSidebarBadges() {
   const messages = [
     { type: 'arcsidebar:set-badges', badges: controlledBadges() },
     { type: 'arcsidebar:set-tab-menu', items: tabMenu() },
+    { type: 'arcsidebar:set-status', statuses: tabStatuses() },
   ];
   for (const host of BADGE_HOSTS) {
     for (const msg of messages) {
@@ -440,6 +543,7 @@ async function markControlled(tabId, agent) {
 
 async function release(tabId) {
   forgetTab(tabId);
+  finishTabStatus(tabId);
   await page(tabId, 'setControlled', { on: false }).catch(() => {});
   await stopPhone(tabId).catch(() => {});
   await stopHar(tabId);
@@ -463,6 +567,7 @@ async function pageLoaded(tabId) {
 
 function forgetTab(tabId) {
   controlled.delete(tabId);
+  clearTabStatus(tabId);
   tabAgent.delete(tabId);
   lastActive.delete(tabId);
   pointerAt.delete(tabId);
@@ -627,7 +732,18 @@ api.debugger?.onDetach.addListener(({ tabId }) => {
 });
 
 // ---------- command handlers ----------
+// The verb for this command is picked before it runs; whichever tab it turns out to be about
+// picks it up in noteActivity(), since only the handlers know which tab that is.
 async function handle(method, params) {
+  currentVerb = verbFor(method, params);
+  try {
+    return await runCommand(method, params);
+  } finally {
+    currentVerb = null;
+  }
+}
+
+async function runCommand(method, params) {
   switch (method) {
     case 'list_tabs': {
       const tabs = await api.tabs.query({});
@@ -658,6 +774,13 @@ async function handle(method, params) {
       if (answer !== 'allow') return { granted: false, answer };
       await markControlled(tab.id, params._agent);
       return { granted: true, tab: await tabSummary(await api.tabs.get(tab.id)) };
+    }
+
+    case 'set_status': {
+      const id = requireControlled(params);
+      if (params.text) setTabStatus(id, params.text, { pinned: true });
+      else clearTabStatus(id);
+      return params.text ? `Tab ${id}: ${tabStatus.get(id)?.text}` : `Cleared the status of tab ${id}`;
     }
 
     case 'release_tab': {

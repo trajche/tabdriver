@@ -42,6 +42,10 @@ type (
 		tabArg
 		Reason *string `json:"reason,omitempty" jsonschema:"Short explanation shown to the user."`
 	}
+	statusIn struct {
+		tabArg
+		Text string `json:"text" jsonschema:"What you are doing in this tab, a few words in the present tense (e.g. \"Checking backlinks\", \"Filling the signup form\"). Empty clears it."`
+	}
 	navigateIn struct {
 		tabArg
 		URL    *string `json:"url,omitempty"`
@@ -249,6 +253,13 @@ func register(s *mcp.Server, h *hub.Hub) {
 			"Shows an Allow/Deny prompt inside that tab and waits for the answer. Omit tabId to target the currently active tab. "+
 			"In Firefox a tab that isn't active may stay in the background, so first tell the user in chat which tab it is.",
 		fixed[accessIn](5*time.Minute))
+
+	forward(s, h, "set_status",
+		"Say what you are doing in a tab, so the user can follow along: it shows under the tab's title in "+
+			"sidebars that support it (Arcsidebar in Firefox). Set it when you start a task and whenever the task "+
+			"changes; it is replaced by your next set_status and cleared when you release the tab. Without it the "+
+			"user still sees the command you are running (\"Clicking\", \"Reading the page\").",
+		fixed[statusIn](d30))
 
 	forward(s, h, "release_tab", "Stop controlling a tab (it stays open).", fixed[tabArg](d30))
 	forward(s, h, "close_tab", "Close a controlled tab.", fixed[tabArg](d30))

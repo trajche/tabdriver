@@ -74,17 +74,23 @@ Run `tabdriver` without arguments to print the config for other agents.
   front. Other browsers bring the tab to the front for new tabs, screenshots and prompts.
 - Several agents can work at once, each in its own tabs.
 - With [Arcsidebar](https://github.com/trajche/arc) in Firefox, controlled tabs show a robot in the sidebar
-  (blinking while the agent works), and right-clicking a tab lets agents take it or stops them.
+  (blinking while the agent works), and right-clicking a tab lets agents take it or stops them. A line
+  under the tab's title says what the agent is doing — what it told you with `set_status` ("Checking
+  backlinks"), or else the command it is running ("Clicking", "Reading the page") — and "Done" when it
+  gives the tab back.
 
 ## Tools
 
 `browser_status` `select_browser` `list_tabs` `open_tab` `close_tab` `navigate` `request_tab_access`
-`release_tab` `snapshot` `click` `type` `select_option` `press_key` `scroll` `wait_for` `get_text`
+`release_tab` `set_status` `snapshot` `click` `type` `select_option` `press_key` `scroll` `wait_for` `get_text`
 `hover` `screenshot` (`path`, `annotate`) `console` `errors` `evaluate` `wait_for_user` `list_downloads`
 `wait_for_download` `upload_file` `record_start` `record_stop` `network` `network_request` `har_start`
 `har_stop` `dogfood_guide` `emulate_device`
 
 `snapshot` takes `selector` (part of the page) and `diff` (only what changed since the last one).
+
+`set_status` tells the user what you are up to in a tab, in your own words; sidebars that support it show
+it under the tab's title. Set it when a task starts and when it changes.
 
 ## Phone view
 
