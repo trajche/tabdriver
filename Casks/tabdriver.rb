@@ -21,25 +21,25 @@ cask "tabdriver" do
     end
   end
 
-  version "0.4.0"
+  version "0.4.1"
 
   on_macos do
     on_arm do
-      sha256 "387398f90f26f579c2ca59a912abb9fc21ef18cd1f1732396ced5a2fe60f5297"
+      sha256 "97a0f4224872658d8e147f8edb4a05bf4c8f0c956585d1ba0ae8b3e3137d503d"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_darwin_arm64.tar.gz"
     end
     on_intel do
-      sha256 "856ba05bcfd3e7aaf6b09a3fdead5c9a2ca2ffcea756965ac4593fd1c1fc5109"
+      sha256 "9b88cf87c60e5d8bc1c34ef8f8dac00ba4e827072299fd438684dc4ff83a47ee"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_darwin_amd64.tar.gz"
     end
   end
   on_linux do
     on_arm do
-      sha256 "574dd9e645fe4d453b19adc529dd5376e91a84abb33ebad991946f7a61c177d1"
+      sha256 "97612b7f992a130746098dd87af909521d488b4262d219b0b8766a35500adb9d"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_linux_arm64.tar.gz"
     end
     on_intel do
-      sha256 "de3a7880707a3e9ca0e0e6035582e32777a9c2c56bea8e7924442606d652f78e"
+      sha256 "0f9f60c612009050158f32e8669e495c4764e75e3d35c36c0ae50a56df2d75d9"
       url "https://github.com/trajche/tabdriver/releases/download/v#{version}/tabdriver_linux_amd64.tar.gz"
     end
   end
